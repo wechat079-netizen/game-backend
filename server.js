@@ -316,6 +316,61 @@ app.get('/admin', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+essage });
+    }
+});
+
+// -------------------------------------------------------------
+// 2. ADMIN ENDPOINTS
+// -------------------------------------------------------------
+
+app.get('/api/admin/get-data', (req, res) => {
+    const gameType = req.query.gameType || '30s';
+    const interval = gameType === '30s' ? 30 : 60;
+    
+    const nowSec = Math.floor(Date.now() / 1000);
+    const currentRound = Math.floor(nowSec / interval);
+    const timer = interval - (nowSec % interval);
+
+    const bets = activeBets[gameType] || [];
+
+    let totals = { BIG: 0, SMALL: 0, GREEN: 0, VIOLET: 0, RED: 0 };
+    bets.forEach(b => {
+        const c = b.choice.toUpperCase();
+        if (totals[c] !== undefined) totals[c] += b.amount;
+    });
+
+    const forced = forcedResults[gameType];
+    let forcedStr = "Auto ( အရမ်ချစ်တယ်)";
+    if (forced) {
+        if (forced.choice) forcedStr = forced.choice;
+        if (forced.number !== undefined && forced.number !== null && forced.number !== "") forcedStr = `ဂဏန်း (${forced.number})`;
+    }
+
+    res.json({
+        round: currentRound,
+        timer: timer,
+        forced: forcedStr,
+        totals: totals,
+        bets: bets
+    });
+});
+
+app.post('/api/admin/set-result', (req, res) => {
+    const { gameType, choice, number } = req.body;
+    if (gameType) {
+        forcedResults[gameType] = { choice, number };
+        return res.json({ success: true, message: `${gameType} အတွက် ရလဒ် သတ်မှတ်ပြီးပါပြီ!` });
+    }
+    return res.status(400).json({ success: false, message: "Game Type မှားယွင်းနေပါသည်!" });
+});
+
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 ----------------------------------------------------------
 
 app.get('/api/admin/get-data', (req, res) => {
