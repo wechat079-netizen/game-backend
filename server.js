@@ -6,57 +6,164 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Firebase Admin Setup
+// -------------------------------------------------------------
+// Firebase Admin Setup (Database URL ပါဝင်ပါသည်)
+// -------------------------------------------------------------
 if (process.env.FIREBASE_CONFIG) {
     try {
         const serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG);
         admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount)
+            credential: admin.credential.cert(serviceAccount),
+            databaseURL: "https://mlb-challenge-myanmar-default-rtdb.firebaseio.com" // မိမိ Firebase DB URL ထည့်ပါ
         });
-        console.log("Firebase Admin Initialized!");
+        console.log("Firebase Admin Initialized Successfully!");
     } catch (e) {
         console.log("Firebase Error:", e.message);
     }
 }
 
-// Memory Store
+// Memory Stores
 let activeBets = { '30s': [], '60s': [] };
 let forcedResults = { '30s': null, '60s': null };
 let gameHistory = { '30s': [], '60s': [] };
-let userBetsHistory = {}; // UID အလိုက် မှတ်တမ်းထားရှိရန်
+let userBetsHistory = {}; // UID အလိုက် စာရင်း
+
+// -------------------------------------------------------------
+// Auto Game Loop & Win Settlement (စက္ကန့်အလိုက် Result ထွက်ပြီး ငွေရှင်းပေးခြင်း)
+// -------------------------------------------------------------
+function startGameEngine(gameType) {
+    const intervalSec = gameType === '30s' ? 30 : 60;
+    let lastProcessedRound = null;
+
+    setInterval(async () => {
+        const nowSec = Math.floor(Date.now() / 1000);
+        const currentRound = Math.floor(nowSec / intervalSec);
+        const timer = intervalSec - (nowSec % intervalSec);
+
+        // စက္ကန့် ကုန်ခါနီး (1 စက္ကန့်) တွင် Result ထုတ်ပြီး ငွေရှင်းပေးမည်
+        if (timer === 1 && lastProcessedRound !== currentRound) {
+            lastProcessedRound = currentRound;
+
+            let winningNumber, resultColor, resultBS;
+            const forced = forcedResults[gameType];
+
+            // Admin မှ ကြိုတင် သတ်မှတ်ထားသော Result ရှိမရှိ စစ်ဆေးခြင်း
+            if (forced && forced.number !== undefined && forced.number !== null) {
+                winningNumber = parseInt(forced.number);
+            } else {
+                winningNumber = Math.floor(Math.random() * 10); // 0 - 9 Random
+            }
+
+            // Color & BS တွက်ချက်ခြင်း
+            if (winningNumber === 0) resultColor = "VIOLET";
+            else if (winningNumber === 5) resultColor = "VIOLET";
+            else if (winningNumber % 2 === 0) resultColor = "RED";
+            else resultColor = "GREEN";
+
+            resultBS = winningNumber >= 5 ? "BIG" : "SMALL";
+
+            // Game History ထဲ ထည့်သွင်းခြင်း
+            const historyItem = {
+                round: currentRound,
+                number: winningNumber,
+                bs: resultBS,
+                color: resultColor
+            };
+            if (!gameHistory[gameType]) gameHistory[gameType] = [];
+            gameHistory[gameType].unshift(historyItem);
+            if (gameHistory[gameType].length > 20) gameHistory[gameType].pop(); // နောက်ဆုံး ၂၀ ခုပဲသိမ်းမည်
+
+            // Bet တင်ထားသူများကို နိုင်/ရှုံး စစ်ပြီး ငွေပေါင်းပေးခြင်း
+            await settleBetsEngine(gameType, currentRound, winningNumber, resultColor, resultBS);
+
+            // Round ပြီးသွားပြီဖြစ်၍ Memory မီးစိမ်းရှင်းခြင်း
+            activeBets[gameType] = [];
+            forcedResults[gameType] = null;
+        }
+    }, 1000);
+}
+
+// Game Loop များကို စတင်ခြင်း
+startGameEngine('30s');
+startGameEngine('60s');
+
+// -------------------------------------------------------------
+// Settle Bets Function (နိုင်ရင် 1.95x အလိုအလျောက် ငွေပေါင်းပေးမည့် Logic)
+// -------------------------------------------------------------
+async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColor, resultBS) {
+    try {
+        const currentBets = activeBets[gameType] || [];
+        if (currentBets.length === 0) return;
+
+        console.log(`[Round ${roundNumber}] Processing ${currentBets.length} bets...`);
+
+        for (let bet of currentBets) {
+            let userId = bet.uid;
+            let amount = parseFloat(bet.amount || 0);
+            let choice = String(bet.choice || '').toUpperCase();
+            let isWin = false;
+
+            // --- နိုင်/ရှုံး စစ်ဆေးခြင်း ---
+            if (choice === resultBS.toUpperCase()) isWin = true;
+            else if (choice === resultColor.toUpperCase()) isWin = true;
+            else if (choice === String(winningNumber)) isWin = true;
+
+            // Status ပြောင်းလဲခြင်း
+            bet.status = isWin ? 'Win' : 'Lose';
+
+            // User My History ထဲတွင် Update လုပ်ခြင်း
+            if (userBetsHistory[userId]) {
+                let uBet = userBetsHistory[userId].find(b => b.round === roundNumber && b.gameType === gameType);
+                if (uBet) uBet.status = bet.status;
+            }
+
+            // --- နိုင်ပါက Firebase 'money' ထဲသို့ 1.95x ပြန်ပေါင်းပေးခြင်း ---
+            if (isWin && admin.apps.length > 0) {
+                let winAmount = amount * 1.95; // 100 ထိုးရင် 195 ကျပ် ပြန်ပေါင်းပေးမည်
+                
+                const userMoneyRef = admin.database().ref(`user/${userId}/money`);
+                await userMoneyRef.transaction((currentMoney) => {
+                    let val = parseFloat(currentMoney);
+                    if (isNaN(val)) val = 0;
+                    return val + winAmount;
+                });
+
+                console.log(`User ${userId} Won ${winAmount} MMK!`);
+            }
+        }
+    } catch (error) {
+        console.error("Settle Bets Error:", error);
+    }
+}
 
 // -------------------------------------------------------------
 // 1. APP / USER ENDPOINTS
 // -------------------------------------------------------------
 
-// (A) User Data Request (Round, Timer & Game History သာ ပါဝင်မည် - Total မပါပါ)
+// (A) User Data Request (Round, Timer, Game History & My History)
 app.get('/api/user/get-data', (req, res) => {
     const gameType = req.query.gameType || '30s';
+    const uid = req.query.uid;
     const interval = gameType === '30s' ? 30 : 60;
     
     const nowSec = Math.floor(Date.now() / 1000);
     const currentRound = Math.floor(nowSec / interval);
     const timer = interval - (nowSec % interval);
 
+    let myHistory = [];
+    if (uid && userBetsHistory[uid]) {
+        myHistory = userBetsHistory[uid].filter(b => b.gameType === gameType).slice(0, 15);
+    }
+
     res.json({
         round: currentRound,
         timer: timer,
-        history: gameHistory[gameType] || []
+        history: gameHistory[gameType] || [],
+        myHistory: myHistory
     });
 });
 
-// (B) User My History Request (မိမိထိုးထားသည့် စာရင်း)
-app.get('/api/user/my-history', (req, res) => {
-    const uid = req.query.uid;
-    const gameType = req.query.gameType || '30s';
-    
-    if (!uid) return res.status(400).json({ success: false, message: "UID လိုအပ်ပါသည်။" });
-    
-    const userHistory = (userBetsHistory[uid] || []).filter(b => b.gameType === gameType);
-    res.json({ success: true, history: userHistory });
-});
-
-// (C) Place Bet Endpoint (ထိုးကြေး တင်ခြင်း)
+// (B) Place Bet Endpoint (ထိုးကြေး တင်ခြင်း)
 app.post('/api/place-bet', (req, res) => {
     const { uid, choice, amount, gameType } = req.body;
     const type = gameType || '30s';
@@ -71,7 +178,7 @@ app.post('/api/place-bet', (req, res) => {
 
     const betData = {
         round: currentRound,
-        choice: choice.toUpperCase(),
+        choice: String(choice).toUpperCase(),
         amount: parseFloat(amount),
         gameType: type,
         status: 'Pending',
@@ -88,12 +195,10 @@ app.post('/api/place-bet', (req, res) => {
     return res.json({ success: true, message: "ထိုးကြေး အောင်မြင်စွာ တင်ပြီးပါပြီ!" });
 });
 
-
 // -------------------------------------------------------------
 // 2. ADMIN ENDPOINTS
 // -------------------------------------------------------------
 
-// Admin Get Data Endpoint (Totals, Round, Timer, Active Bets အကုန်ပါမည်)
 app.get('/api/admin/get-data', (req, res) => {
     const gameType = req.query.gameType || '30s';
     const interval = gameType === '30s' ? 30 : 60;
@@ -102,20 +207,12 @@ app.get('/api/admin/get-data', (req, res) => {
     const currentRound = Math.floor(nowSec / interval);
     const timer = interval - (nowSec % interval);
 
-    // Round ပြောင်းပါက Active Bets ရှင်းပေးခြင်း
-    if (timer === interval) {
-        activeBets[gameType] = [];
-    }
-
     const bets = activeBets[gameType] || [];
 
-    // Total Bets Calculation (BIG, SMALL, GREEN, VIOLET)
-    let totals = { BIG: 0, SMALL: 0, GREEN: 0, VIOLET: 0 };
+    let totals = { BIG: 0, SMALL: 0, GREEN: 0, VIOLET: 0, RED: 0 };
     bets.forEach(b => {
         const c = b.choice.toUpperCase();
-        if (totals[c] !== undefined) {
-            totals[c] += b.amount;
-        }
+        if (totals[c] !== undefined) totals[c] += b.amount;
     });
 
     const forced = forcedResults[gameType];
@@ -134,7 +231,6 @@ app.get('/api/admin/get-data', (req, res) => {
     });
 });
 
-// Admin Set Result Endpoint
 app.post('/api/admin/set-result', (req, res) => {
     const { gameType, choice, number } = req.body;
     if (gameType) {
@@ -150,53 +246,3 @@ app.get('/admin', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-// 1. Result ထွက်လာချိန်တွင် Win/Lose စစ်ပြီး ငွေပေါင်းပေးမည့် Function
-async function settleBets(roundNumber, winningNumber, resultColor, resultBS) {
-    try {
-        const betsRef = admin.database().ref(`bets/${roundNumber}`);
-        const snapshot = await betsRef.once('value');
-        const bets = snapshot.val();
-
-        if (!bets) return; // ဒီ Round မှာ ဘယ်သူမှ မထိုးထားရင် ကျော်မည်
-
-        for (let userId in bets) {
-            let userBet = bets[userId];
-            let amount = parseFloat(userBet.amount || 0);
-            let choice = String(userBet.choice || '').toUpperCase();
-            let isWin = false;
-
-            // --- နိုင်/ရှုံး စစ်ဆေးသည့် Logic ---
-            // ၁။ Big / Small ကိုက်ညီပါက
-            if (choice === resultBS.toUpperCase()) {
-                isWin = true;
-            }
-            // ၂။ Color (GREEN, VIOLET, RED) ကိုက်ညီပါက
-            else if (choice === resultColor.toUpperCase()) {
-                isWin = true;
-            }
-            // ၃။ ဂဏန်း အတိအကျ (0 - 9) ကိုက်ညီပါက
-            else if (choice === String(winningNumber)) {
-                isWin = true;
-            }
-
-            // --- နိုင်ပါက ငွေပြန်ပေါင်းပေးခြင်း ---
-            if (isWin) {
-                let winAmount = amount * 1.95; // 100 ထိုးရင် 195 ပေါင်းပေးမည်
-
-                // User Balance (money) ထဲသို့ နိုင်ကြေး ပေါင်းထည့်ခြင်း
-                const userMoneyRef = admin.database().ref(`user/${userId}/money`);
-                await userMoneyRef.transaction((currentMoney) => {
-                    return (parseFloat(currentMoney) || 0) + winAmount;
-                });
-
-                // User Bet History Status ကို 'Win' ဟု ပြောင်းခြင်း
-                await admin.database().ref(`bets/${roundNumber}/${userId}/status`).set('Win');
-            } else {
-                // ရှုံးပါက Status ကို 'Lose' ဟု ပြောင်းခြင်း
-                await admin.database().ref(`bets/${roundNumber}/${userId}/status`).set('Lose');
-            }
-        }
-    } catch (error) {
-        console.error("Settle Bets Error:", error);
-    }
-}
