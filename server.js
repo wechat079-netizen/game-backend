@@ -7,7 +7,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ------------------------------------------------------------
+// ----------------------------------------------------------
 // Firebase Admin Setup (Project: right-2c598)
 // -------------------------------------------------------------
 if (process.env.FIREBASE_CONFIG) {
