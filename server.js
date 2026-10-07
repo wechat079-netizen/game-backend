@@ -7,7 +7,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// -------------------------------------------------
+// -------------------------------------------------------------
 // Firebase Admin Setup (Project: right-2c598)
 // -------------------------------------------------------------
 if (process.env.FIREBASE_CONFIG) {
@@ -187,7 +187,7 @@ app.get('/api/user/get-data', async (req, res) => {
     }
 });
 
-// Place Bet Endpoint (Body နှင့် Query နှစ်မျိုးစလုံးကို လက်ခံပေးသည်)
+// Place Bet Endpoint (ငွေကို သေချာပေါက် ဖြတ်ယူရန် ပြင်ဆင်ထားသည်)
 app.all('/api/place-bet', async (req, res) => {
     try {
         const uid = req.body.uid || req.query.uid;
@@ -205,7 +205,7 @@ app.all('/api/place-bet', async (req, res) => {
 
         const betAmount = parseFloat(amount);
         if (isNaN(betAmount) || betAmount <= 0) {
-            return res.status(400).json({ success: false, message: "ထိုးငွေ ပမာဏ မမှန်ကန်ပါ!" });
+            return res.status(400).json({ message: "ထိုးငွေ ပမာဏ မမှန်ကန်ပါ!" });
         }
 
         if (admin.apps.length === 0) {
@@ -214,25 +214,23 @@ app.all('/api/place-bet', async (req, res) => {
 
         const db = admin.database();
         const userMoneyRef = db.ref(`user/${uid}/money`);
-        let isDeducted = false;
         let remainingBalance = 0;
 
-        await userMoneyRef.transaction((currentMoney) => {
+        // Firebase Transaction ဖြင့် ငွေကို တိုက်ရိုက်နုတ်ယူပြီး committed ဖြစ်မဖြစ် စစ်ဆေးခြင်း
+        const txResult = await userMoneyRef.transaction((currentMoney) => {
             let val = parseFloat(currentMoney);
             if (isNaN(val)) val = 0;
 
             if (val < betAmount) {
-                isDeducted = false;
-                return;
+                return; // ငွေမလုံလောက်ပါက မနုတ်ဘဲ ရပ်မည်
             }
 
-            isDeducted = true;
             remainingBalance = val - betAmount;
             return remainingBalance;
         });
 
-        if (!isDeducted) {
-            return res.status(400).json({ success: false, message: "လက်ကျန်ငွေ မလုံလောက်ပါ!" });
+        if (!txResult.committed) {
+            return res.status(400).json({ success: false, message: "လက်ကျန်ငွေ မလုံလောက်ပါ (သို့မဟုတ်) ငွေဖြတ်၍ မရပါ!" });
         }
 
         const interval = type === '30s' ? 30 : 60;
@@ -253,7 +251,7 @@ app.all('/api/place-bet', async (req, res) => {
         await newBetRef.set(betData);
 
         activeBets[type].push({ uid, ...betData });
-        console.log(`[SUCCESS] User ${uid} bet ${betAmount} on ${choice}`);
+        console.log(`[SUCCESS] User ${uid} bet ${betAmount} on ${choice}. Remaining balance: ${remainingBalance}`);
 
         return res.json({ 
             success: true, 
@@ -270,6 +268,55 @@ app.all('/api/place-bet', async (req, res) => {
 // -------------------------------------------------------------
 // 2. ADMIN ENDPOINTS
 // -------------------------------------------------------------
+
+app.get('/api/admin/get-data', (req, res) => {
+    const gameType = req.query.gameType || '30s';
+    const interval = gameType === '30s' ? 30 : 60;
+    
+    const nowSec = Math.floor(Date.now() / 1000);
+    const currentRound = Math.floor(nowSec / interval);
+    const timer = interval - (nowSec % interval);
+
+    const bets = activeBets[gameType] || [];
+
+    let totals = { BIG: 0, SMALL: 0, GREEN: 0, VIOLET: 0, RED: 0 };
+    bets.forEach(b => {
+        const c = b.choice.toUpperCase();
+        if (totals[c] !== undefined) totals[c] += b.amount;
+    });
+
+    const forced = forcedResults[gameType];
+    let forcedStr = "Auto ( အရမ်ချစ်တယ်)";
+    if (forced) {
+        if (forced.choice) forcedStr = forced.choice;
+        if (forced.number !== undefined && forced.number !== null && forced.number !== "") forcedStr = `ဂဏန်း (${forced.number})`;
+    }
+
+    res.json({
+        round: currentRound,
+        timer: timer,
+        forced: forcedStr,
+        totals: totals,
+        bets: bets
+    });
+});
+
+app.post('/api/admin/set-result', (req, res) => {
+    const { gameType, choice, number } = req.body;
+    if (gameType) {
+        forcedResults[gameType] = { choice, number };
+        return res.json({ success: true, message: `${gameType} အတွက် ရလဒ် သတ်မှတ်ပြီးပါပြီ!` });
+    }
+    return res.status(400).json({ success: false, message: "Game Type မှားယွင်းနေပါသည်!" });
+});
+
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+----------------------------------------------------------
 
 app.get('/api/admin/get-data', (req, res) => {
     const gameType = req.query.gameType || '30s';
