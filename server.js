@@ -187,17 +187,19 @@ app.get('/api/user/get-data', async (req, res) => {
     }
 });
 
-// Place Bet Endpoint (Debug logs ပါဝင်သည်)
-app.post('/api/place-bet', async (req, res) => {
+// Place Bet Endpoint (Body နှင့် Query နှစ်မျိုးစလုံးကို လက်ခံပေးသည်)
+app.all('/api/place-bet', async (req, res) => {
     try {
-        console.log("=== RECEIVED PLACE-BET REQUEST ===");
-        console.log("BODY:", req.body);
-
-        const { uid, choice, amount, gameType } = req.body;
+        const uid = req.body.uid || req.query.uid;
+        const choice = req.body.choice || req.query.choice;
+        const amount = req.body.amount || req.query.amount;
+        const gameType = req.body.gameType || req.query.gameType;
         const type = gameType || '30s';
 
+        console.log("=== PLACE BET CALLED ===");
+        console.log("Params -> uid:", uid, "choice:", choice, "amount:", amount, "gameType:", type);
+
         if (!uid || !choice || !amount) {
-            console.log("ERROR: Missing fields in request body!");
             return res.status(400).json({ success: false, message: "အချက်အလက် မစုံလင်ပါ!" });
         }
 
@@ -230,7 +232,6 @@ app.post('/api/place-bet', async (req, res) => {
         });
 
         if (!isDeducted) {
-            console.log(`ERROR: User ${uid} has insufficient balance.`);
             return res.status(400).json({ success: false, message: "လက်ကျန်ငွေ မလုံလောက်ပါ!" });
         }
 
@@ -252,7 +253,7 @@ app.post('/api/place-bet', async (req, res) => {
         await newBetRef.set(betData);
 
         activeBets[type].push({ uid, ...betData });
-        console.log(`[BET SUCCESS] User ${uid} bet ${betAmount} on ${choice} for Round ${currentRound}`);
+        console.log(`[SUCCESS] User ${uid} bet ${betAmount} on ${choice}`);
 
         return res.json({ 
             success: true, 
