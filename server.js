@@ -4,7 +4,7 @@ const admin = require('firebase-admin');
 
 const app = express();
 app.use(express.json());
-app.use(express.urlencoded({ extended: true })); // <-- Sketchware မှ ပို့သော Data များကို ဖတ်နိုင်ရန် အဓိက လိုအပ်ပါသည်
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // -------------------------------------------------------------
@@ -83,7 +83,6 @@ function startGameEngine(gameType) {
             gameHistory[gameType].unshift(historyItem);
             if (gameHistory[gameType].length > 30) gameHistory[gameType].pop();
 
-            // Bet များကို စစ်ဆေးပြီး ငွေရှင်းမည်
             await settleBetsEngine(gameType, currentRound, winningNumber, resultColor, resultBS);
 
             activeBets[gameType] = [];
@@ -124,12 +123,10 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
             if (admin.apps.length > 0) {
                 const db = admin.database();
 
-                // 1. Firebase ထဲရှိ သက်ဆိုင်ရာ Bet ၏ Status ကို Win/Lose ပြောင်းရန်
                 if (bet.firebaseKey) {
                     await db.ref(`userBetsHistory/${userId}/${bet.firebaseKey}`).update({ status: status });
                 }
 
-                // 2. နိုင်ပါက ငွေပေါင်းပေးရန် (1.95x သို့မဟုတ် 9x)
                 if (isWin) {
                     let winMultiplier = (choice === String(winningNumber)) ? 9.0 : 1.95;
                     let winAmount = amount * winMultiplier;
@@ -153,7 +150,6 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
 // 1. APP / USER ENDPOINTS
 // -------------------------------------------------------------
 
-// (A) User Data Request (History များကို Error မတက်စေရန် Safe ဖြင့် ဆွဲထုတ်မည်)
 app.get('/api/user/get-data', async (req, res) => {
     try {
         const gameType = req.query.gameType || '30s';
@@ -173,7 +169,6 @@ app.get('/api/user/get-data', async (req, res) => {
             if (snapshot.exists()) {
                 snapshot.forEach((childSnap) => {
                     let val = childSnap.val();
-                    // သက်ဆိုင်ရာ GameType အလျောက် ထည့်မည်
                     if (val.gameType === gameType) {
                         myHistory.unshift(val);
                     }
@@ -192,13 +187,17 @@ app.get('/api/user/get-data', async (req, res) => {
     }
 });
 
-// (B) Place Bet Endpoint (ငွေနှုတ်ခြင်း နှင့် History သိမ်းဆည်းခြင်း)
+// Place Bet Endpoint (Debug logs ပါဝင်သည်)
 app.post('/api/place-bet', async (req, res) => {
     try {
+        console.log("=== RECEIVED PLACE-BET REQUEST ===");
+        console.log("BODY:", req.body);
+
         const { uid, choice, amount, gameType } = req.body;
         const type = gameType || '30s';
 
         if (!uid || !choice || !amount) {
+            console.log("ERROR: Missing fields in request body!");
             return res.status(400).json({ success: false, message: "အချက်အလက် မစုံလင်ပါ!" });
         }
 
@@ -216,7 +215,6 @@ app.post('/api/place-bet', async (req, res) => {
         let isDeducted = false;
         let remainingBalance = 0;
 
-        // Firebase Transaction ဖြင့် ငွေလုံခြုံစွာ နှုတ်ခြင်း
         await userMoneyRef.transaction((currentMoney) => {
             let val = parseFloat(currentMoney);
             if (isNaN(val)) val = 0;
@@ -232,6 +230,7 @@ app.post('/api/place-bet', async (req, res) => {
         });
 
         if (!isDeducted) {
+            console.log(`ERROR: User ${uid} has insufficient balance.`);
             return res.status(400).json({ success: false, message: "လက်ကျန်ငွေ မလုံလောက်ပါ!" });
         }
 
@@ -248,13 +247,12 @@ app.post('/api/place-bet', async (req, res) => {
             time: Date.now()
         };
 
-        // Firebase Database ထဲသို့ သိမ်းဆည်းမည်
         const newBetRef = db.ref(`userBetsHistory/${uid}`).push();
         betData.firebaseKey = newBetRef.key;
         await newBetRef.set(betData);
 
-        // Active Bets ထဲသို့ ထည့်မည် (Admin အတွက်)
         activeBets[type].push({ uid, ...betData });
+        console.log(`[BET SUCCESS] User ${uid} bet ${betAmount} on ${choice} for Round ${currentRound}`);
 
         return res.json({ 
             success: true, 
