@@ -4,7 +4,6 @@ const admin = require('firebase-admin');
 
 const app = express();
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // -------------------------------------------------------------
@@ -54,12 +53,13 @@ function startGameEngine(gameType) {
             if (forced && (forced.number !== undefined && forced.number !== null && forced.number !== "")) {
                 winningNumber = parseInt(forced.number);
             } else if (forced && forced.choice) {
-                // Admin က BIG / SMALL / GREEN / VIOLET သာ သတ်မှတ်နိုင်ပါသည်
+                // Admin က Choice (BIG/SMALL/GREEN/RED/VIOLET) ပေးထားပါက
                 let c = forced.choice.toUpperCase();
-                if (c === "BIG") winningNumber = 5 + Math.floor(Math.random() * 5);
-                else if (c === "SMALL") winningNumber = Math.floor(Math.random() * 5);
-                else if (c === "GREEN") winningNumber = [0, 2, 4, 6, 8][Math.floor(Math.random() * 5)];
-                else if (c === "VIOLET") winningNumber = [1, 3, 5, 7, 9][Math.floor(Math.random() * 5)];
+                if (c === "BIG") winningNumber = 5 + Math.floor(Math.random() * 5); // 5 - 9
+                else if (c === "SMALL") winningNumber = Math.floor(Math.random() * 5); // 0 - 4
+                else if (c === "GREEN") winningNumber = [1, 3, 7, 9][Math.floor(Math.random() * 4)];
+                else if (c === "RED") winningNumber = [2, 4, 6, 8][Math.floor(Math.random() * 4)];
+                else if (c === "VIOLET") winningNumber = [0, 5][Math.floor(Math.random() * 2)];
                 else winningNumber = Math.floor(Math.random() * 10);
             } else {
                 // 2. Auto Random ရွေးချယ်ခြင်း
@@ -67,8 +67,13 @@ function startGameEngine(gameType) {
             }
 
             // Color & BS တွက်ချက်ခြင်း Logic
-            // စုံဂဏန်း = GREEN၊ မဂဏန်း = VIOLET
-            resultColor = winningNumber % 2 === 0 ? "GREEN" : "VIOLET";
+            if (winningNumber === 0 || winningNumber === 5) {
+                resultColor = "VIOLET";
+            } else if (winningNumber % 2 === 0) {
+                resultColor = "RED";
+            } else {
+                resultColor = "GREEN";
+            }
 
             resultBS = winningNumber >= 5 ? "BIG" : "SMALL";
 
@@ -118,7 +123,7 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
             if (choice === resultBS) {
                 isWin = true; // BIG or SMALL (1.95x)
             } else if (choice === resultColor) {
-                isWin = true; // GREEN or VIOLET (1.95x)
+                isWin = true; // GREEN, VIOLET, RED (1.95x)
             } else if (choice === String(winningNumber)) {
                 isWin = true; // ဂဏန်း အတိအကျ 0 - 9 (9x)
             }
@@ -181,71 +186,34 @@ app.get('/api/user/get-data', (req, res) => {
     });
 });
 
-// (B) Place Bet Endpoint (ထိုးကြေးတင်ချိန်တွင် ငွေချက်ချင်းနုတ်မည်)
-app.all('/api/place-bet', async (req, res) => {
-    try {
-        const uid = req.body.uid || req.query.uid;
-        const choice = req.body.choice || req.query.choice;
-        const rawAmount = req.body.amount || req.query.amount;
-        const type = req.body.gameType || req.query.gameType || '30s';
-        const allowedChoices = ['BIG', 'SMALL', 'GREEN', 'VIOLET'];
-        const normalizedChoice = String(choice || '').trim().toUpperCase();
-        const betAmount = Number(rawAmount);
+// (B) Place Bet Endpoint (ထိုးကြေး တင်ခြင်း)
+app.post('/api/place-bet', (req, res) => {
+    const { uid, choice, amount, gameType } = req.body;
+    const type = gameType || '30s';
 
-        if (!uid || !allowedChoices.includes(normalizedChoice) && !/^\d$/.test(normalizedChoice)) {
-            return res.status(400).json({ success: false, message: "ရွေးချယ်မှု မမှန်ကန်ပါ!" });
-        }
-        if (!['30s', '60s'].includes(type)) {
-            return res.status(400).json({ success: false, message: "Game Type မမှန်ကန်ပါ!" });
-        }
-        if (!Number.isFinite(betAmount) || betAmount <= 0) {
-            return res.status(400).json({ success: false, message: "ထိုးငွေ ပမာဏ မမှန်ကန်ပါ!" });
-        }
-        if (admin.apps.length === 0) {
-            return res.status(500).json({ success: false, message: "Firebase Admin ချိတ်ဆက်မှု မရှိသေးပါ!" });
-        }
-
-        const db = admin.database();
-        const moneyRef = db.ref(`user/${uid}/money`);
-        const debitResult = await moneyRef.transaction((currentMoney) => {
-            let balance = Number(currentMoney);
-            if (!Number.isFinite(balance)) balance = 0;
-            if (balance < betAmount) return; // လက်ကျန်မလုံလောက်ပါက transaction မလုပ်ပါ
-            return balance - betAmount;
-        });
-
-        if (!debitResult.committed) {
-            return res.status(400).json({ success: false, message: "လက်ကျန်ငွေ မလုံလောက်ပါ!" });
-        }
-
-        const interval = type === '30s' ? 30 : 60;
-        const currentRound = Math.floor(Math.floor(Date.now() / 1000) / interval);
-        const betData = {
-            round: currentRound,
-            choice: normalizedChoice,
-            amount: betAmount,
-            gameType: type,
-            status: 'Pending',
-            time: Date.now()
-        };
-
-        try {
-            activeBets[type].push({ uid, ...betData });
-            if (!userBetsHistory[uid]) userBetsHistory[uid] = [];
-            userBetsHistory[uid].unshift(betData);
-        } catch (saveError) {
-            // Memory save မအောင်မြင်မှသာ နုတ်ထားသည့်ငွေကို ပြန်အမ်းမည်
-            await moneyRef.transaction((currentMoney) => (Number(currentMoney) || 0) + betAmount);
-            throw saveError;
-        }
-
-        const newBalance = Number(debitResult.snapshot.val()) || 0;
-        console.log(`[BET SUCCESS] User ${uid} -${betAmount} MMK; balance=${newBalance}`);
-        return res.json({ success: true, message: "ထိုးကြေးအောင်မြင်စွာတင်ပြီးပါပြီ!", balance: newBalance });
-    } catch (error) {
-        console.error("Place Bet Error:", error);
-        return res.status(500).json({ success: false, message: error.message });
+    if (!uid || !choice || !amount) {
+        return res.status(400).json({ success: false, message: "အချက်အလက် မစုံလင်ပါ!" });
     }
+
+    const interval = type === '30s' ? 30 : 60;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const currentRound = Math.floor(nowSec / interval);
+
+    const betData = {
+        round: currentRound,
+        choice: String(choice).trim().toUpperCase(),
+        amount: parseFloat(amount),
+        gameType: type,
+        status: 'Pending',
+        time: Date.now()
+    };
+
+    activeBets[type].push({ uid, ...betData });
+
+    if (!userBetsHistory[uid]) userBetsHistory[uid] = [];
+    userBetsHistory[uid].unshift(betData);
+
+    return res.json({ success: true, message: "ထိုးကြေး အောင်မြင်စွာ တင်ပြီးပါပြီ!" });
 });
 
 // -------------------------------------------------------------
@@ -262,7 +230,7 @@ app.get('/api/admin/get-data', (req, res) => {
 
     const bets = activeBets[gameType] || [];
 
-    let totals = { BIG: 0, SMALL: 0, GREEN: 0, VIOLET: 0 };
+    let totals = { BIG: 0, SMALL: 0, GREEN: 0, VIOLET: 0, RED: 0 };
     bets.forEach(b => {
         const c = b.choice.toUpperCase();
         if (totals[c] !== undefined) totals[c] += b.amount;
@@ -286,15 +254,11 @@ app.get('/api/admin/get-data', (req, res) => {
 
 app.post('/api/admin/set-result', (req, res) => {
     const { gameType, choice, number } = req.body;
-    const allowedChoices = ['BIG', 'SMALL', 'GREEN', 'VIOLET'];
-    const normalizedChoice = choice ? String(choice).trim().toUpperCase() : '';
-    const hasNumber = number !== undefined && number !== null && number !== '';
-    const validNumber = !hasNumber || (Number.isInteger(Number(number)) && Number(number) >= 0 && Number(number) <= 9);
-    if (!['30s', '60s'].includes(gameType) || (normalizedChoice && !allowedChoices.includes(normalizedChoice)) || !validNumber) {
-        return res.status(400).json({ success: false, message: "BIG / SMALL / GREEN / VIOLET သာ အသုံးပြုနိုင်ပါသည်!" });
+    if (gameType) {
+        forcedResults[gameType] = { choice, number };
+        return res.json({ success: true, message: `${gameType} အတွက် ရလဒ် သတ်မှတ်ပြီးပါပြီ!` });
     }
-    forcedResults[gameType] = { choice: normalizedChoice || null, number: hasNumber ? Number(number) : null };
-    return res.json({ success: true, message: `${gameType} အတွက် ရလဒ် သတ်မှတ်ပြီးပါပြီ!` });
+    return res.status(400).json({ success: false, message: "Game Type မှားယွင်းနေပါသည်!" });
 });
 
 app.get('/admin', (req, res) => {
