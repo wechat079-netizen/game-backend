@@ -185,83 +185,50 @@ app.get('/api/user/get-data', (req, res) => {
     });
 });
 
-// (B) Place Bet Endpoint (ငွေနုတ်ခြင်း နှင့် Bet တင်ခြင်း)
 app.post('/api/place-bet', async (req, res) => {
-    try {
-        const uid = req.body.uid || req.query.uid;
-        const choice = req.body.choice || req.query.choice;
-        const amount = req.body.amount || req.query.amount;
-        const gameType = req.body.gameType || req.query.gameType;
-        const type = gameType || '30s';
+    const { uid, choice, amount, gameType } = req.body;
+    const type = gameType || '30s';
 
-        if (!uid || !choice || !amount) {
-            return res.status(400).json({ success: false, message: "အချက်အလက် မစုံလင်ပါ!" });
-        }
+    if (!uid || !choice || !amount) {
+        return res.status(400).json({ success: false, message: "အချက်အလက် မစုံလင်ပါ!" });
+    }
 
-        const betAmount = parseFloat(amount);
-        if (isNaN(betAmount) || betAmount <= 0) {
-            return res.status(400).json({ success: false, message: "ထိုးငွေ ပမာဏ မမှန်ကန်ပါ!" });
-        }
+    const betAmount = parseFloat(amount);
+    if (isNaN(betAmount) || betAmount <= 0) {
+        return res.status(400).json({ success: false, message: "ထိုးငွေ ပမာဏ မမှန်ကန်ပါ!" });
+    }
 
-        if (admin.apps.length === 0) {
-            return res.status(500).json({ success: false, message: "Firebase Admin ချိတ်ဆက်မှု မရှိသေးပါ!" });
-        }
-
-        const db = admin.database();
-        const userMoneyRef = db.ref(`user/${uid}/money`);
-        let remainingBalance = 0;
-        let isSuccess = false;
-
-        // Firebase Transaction ဖြင့် လက်ကျန်ငွေ ဖြတ်ယူခြင်း
+    if (admin.apps.length > 0) {
+        const userMoneyRef = admin.database().ref(`user/${uid}/money`);
         await userMoneyRef.transaction((currentMoney) => {
             let val = parseFloat(currentMoney);
             if (isNaN(val)) val = 0;
-
-            if (val < betAmount) {
-                isSuccess = false;
-                return; // ငွေမလုံလောက်ပါက မနုတ်ပါ
-            }
-
-            remainingBalance = val - betAmount;
-            isSuccess = true;
-            return remainingBalance;
+            return val - betAmount; // ငွေပေါင်းတဲ့နေရာမှာ + လုပ်သလို ဒီမှာ - လုပ်ပေးလိုက်ပါသည်
         });
-
-        if (!isSuccess) {
-            return res.status(400).json({ success: false, message: "လက်ကျန်ငွေ မလုံလောက်ပါ!" });
-        }
-
-        const interval = type === '30s' ? 30 : 60;
-        const nowSec = Math.floor(Date.now() / 1000);
-        const currentRound = Math.floor(nowSec / interval);
-
-        const betData = {
-            round: currentRound,
-            choice: String(choice).trim().toUpperCase(),
-            amount: betAmount,
-            gameType: type,
-            status: 'Pending',
-            time: Date.now()
-        };
-
-        activeBets[type].push({ uid, ...betData });
-
-        if (!userBetsHistory[uid]) userBetsHistory[uid] = [];
-        userBetsHistory[uid].unshift(betData);
-
-        return res.json({ 
-            success: true, 
-            message: "ထိုးကြေး အောင်မြင်စွာ တင်ပြီးပါပြီ!",
-            balance: remainingBalance 
-        });
-
-    } catch (error) {
-        console.error("Place Bet Error:", error);
-        return res.status(500).json({ success: false, error: error.message });
+        console.log(`[BET SUCCESS] User ${uid} deducted -${betAmount} MMK`);
     }
+
+    const interval = type === '30s' ? 30 : 60;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const currentRound = Math.floor(nowSec / interval);
+
+    const betData = {
+        round: currentRound,
+        choice: String(choice).trim().toUpperCase(),
+        amount: betAmount,
+        gameType: type,
+        status: 'Pending',
+        time: Date.now()
+    };
+
+    activeBets[type].push({ uid, ...betData });
+
+    if (!userBetsHistory[uid]) userBetsHistory[uid] = [];
+    userBetsHistory[uid].unshift(betData);
+
+    return res.json({ success: true, message: "ထိုးကြေး အောင်မြင်စွာ တင်ပြီးပါပြီ!" });
 });
 
-// -------------------------------------------------------------
 // 2. ADMIN ENDPOINTS
 // -------------------------------------------------------------
 
