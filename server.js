@@ -23,16 +23,15 @@ if (process.env.FIREBASE_CONFIG) {
 let activeBets = { '30s': [], '60s': [] };
 let forcedResults = { '30s': null, '60s': null };
 
-// 1. App Bet Endpoint (App မှ ထိုးကြေး တင်သည့် API)
+// 1. App Bet Endpoint
 app.post('/api/place-bet', (req, res) => {
-    const { uid, choice, amount, gameType } = req.body; // gameType: '30s' or '60s'
+    const { uid, choice, amount, gameType } = req.body;
     const type = gameType || '30s';
 
     if (!uid || !choice || !amount) {
         return res.status(400).json({ success: false, message: "အချက်အလက် မစုံလင်ပါ!" });
     }
 
-    // Save to active bets
     activeBets[type].push({
         uid: uid,
         choice: choice.toUpperCase(),
@@ -43,7 +42,7 @@ app.post('/api/place-bet', (req, res) => {
     return res.json({ success: true, message: "ထိုးကြေး တင်ပြီးပါပြီ!" });
 });
 
-// 2. Admin Get Data Endpoint (Round, Totals & Live Bets)
+// 2. Admin Get Data Endpoint (RED မပါတော့ပါ)
 app.get('/api/admin/get-data', (req, res) => {
     const gameType = req.query.gameType || '30s';
     const interval = gameType === '30s' ? 30 : 60;
@@ -52,15 +51,14 @@ app.get('/api/admin/get-data', (req, res) => {
     const currentRound = Math.floor(nowSec / interval);
     const timer = interval - (nowSec % interval);
 
-    // Timer Round ပြောင်းသွားလျှင် Active Bets များကို ရှင်းပေးခြင်း
     if (timer === interval) {
         activeBets[gameType] = [];
     }
 
     const bets = activeBets[gameType] || [];
 
-    // Total Bets Calculation (BIG, SMALL, RED, GREEN, VIOLET)
-    let totals = { BIG: 0, SMALL: 0, RED: 0, GREEN: 0, VIOLET: 0 };
+    // Total Bets Calculation (BIG, SMALL, GREEN, VIOLET သာပါဝင်မည်)
+    let totals = { BIG: 0, SMALL: 0, GREEN: 0, VIOLET: 0 };
 
     bets.forEach(b => {
         const c = b.choice.toUpperCase();
