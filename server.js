@@ -4,6 +4,7 @@ const admin = require('firebase-admin');
 
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // <-- Sketchware မှ ပို့သော Data များကို ဖတ်နိုင်ရန် အဓိက လိုအပ်ပါသည်
 app.use(express.static(path.join(__dirname, 'public')));
 
 // -------------------------------------------------------------
@@ -95,7 +96,7 @@ startGameEngine('30s');
 startGameEngine('60s');
 
 // -------------------------------------------------------------
-// Settle Bets Engine (Firebase ထဲပါ တစ်ခါတည်း Status ပြောင်းပေးခြင်း)
+// Settle Bets Engine (နိုင်/ရှုံး စစ်ဆေးပြီး ငွေပေါင်းပေးခြင်း)
 // -------------------------------------------------------------
 async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColor, resultBS) {
     try {
@@ -128,7 +129,7 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
                     await db.ref(`userBetsHistory/${userId}/${bet.firebaseKey}`).update({ status: status });
                 }
 
-                // 2. နိုင်ပါက ငွေပေါင်းပေးရန်
+                // 2. နိုင်ပါက ငွေပေါင်းပေးရန် (1.95x သို့မဟုတ် 9x)
                 if (isWin) {
                     let winMultiplier = (choice === String(winningNumber)) ? 9.0 : 1.95;
                     let winAmount = amount * winMultiplier;
@@ -152,7 +153,7 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
 // 1. APP / USER ENDPOINTS
 // -------------------------------------------------------------
 
-// (A) User Data Request (Firebase မှ My History ကို တိုက်ရိုက်ဖတ်မည်)
+// (A) User Data Request (History များကို Error မတက်စေရန် Safe ဖြင့် ဆွဲထုတ်မည်)
 app.get('/api/user/get-data', async (req, res) => {
     try {
         const gameType = req.query.gameType || '30s';
@@ -166,14 +167,16 @@ app.get('/api/user/get-data', async (req, res) => {
         let myHistory = [];
         if (uid && admin.apps.length > 0) {
             const snapshot = await admin.database().ref(`userBetsHistory/${uid}`)
-                .orderByChild('gameType')
-                .equalTo(gameType)
-                .limitToLast(20)
+                .limitToLast(30)
                 .once('value');
             
             if (snapshot.exists()) {
                 snapshot.forEach((childSnap) => {
-                    myHistory.unshift(childSnap.val());
+                    let val = childSnap.val();
+                    // သက်ဆိုင်ရာ GameType အလျောက် ထည့်မည်
+                    if (val.gameType === gameType) {
+                        myHistory.unshift(val);
+                    }
                 });
             }
         }
@@ -189,7 +192,7 @@ app.get('/api/user/get-data', async (req, res) => {
     }
 });
 
-// (B) Place Bet Endpoint (Firebase ထဲတွင် Balance နှုတ်ပြီး History ပါ တခါတည်း သိမ်းမည်)
+// (B) Place Bet Endpoint (ငွေနှုတ်ခြင်း နှင့် History သိမ်းဆည်းခြင်း)
 app.post('/api/place-bet', async (req, res) => {
     try {
         const { uid, choice, amount, gameType } = req.body;
@@ -245,12 +248,12 @@ app.post('/api/place-bet', async (req, res) => {
             time: Date.now()
         };
 
-        // Firebase Database ရဲ့ userBetsHistory ထဲသို့ တခါတည်း သိမ်းဆည်းမည် (Key အသစ်ယူမည်)
+        // Firebase Database ထဲသို့ သိမ်းဆည်းမည်
         const newBetRef = db.ref(`userBetsHistory/${uid}`).push();
         betData.firebaseKey = newBetRef.key;
         await newBetRef.set(betData);
 
-        // Active Bets ထဲသို့ ထည့်မည်
+        // Active Bets ထဲသို့ ထည့်မည် (Admin အတွက်)
         activeBets[type].push({ uid, ...betData });
 
         return res.json({ 
