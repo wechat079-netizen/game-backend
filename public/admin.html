@@ -13,17 +13,16 @@
         .tab-btn.active { background: #00e5ff; color: #000; }
         .info-box { background: #11141d; padding: 15px; border-radius: 8px; border-left: 4px solid #00e5ff; margin-bottom: 20px; }
         
-        /* Total Bets Grid UI */
+        /* Total Bets Grid UI (RED မပါတော့ပါ) */
         .total-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; }
         .total-box { padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; }
         .bg-big { background: #c62828; }
         .bg-small { background: #2e7d32; }
-        .bg-red { background: #d32f2f; }
         .bg-green { background: #388e3c; }
-        .bg-violet { background: #7b1fa2; grid-column: span 2; }
+        .bg-violet { background: #7b1fa2; }
 
         .flex-btns { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-        .btn-ctrl { flex: 1; min-width: 30%; padding: 12px; border: none; border-radius: 8px; color: #fff; font-weight: bold; cursor: pointer; }
+        .btn-ctrl { flex: 1; min-width: 45%; padding: 12px; border: none; border-radius: 8px; color: #fff; font-weight: bold; cursor: pointer; }
         input { width: 100%; padding: 12px; margin-top: 10px; box-sizing: border-box; background: #11141d; border: 1px solid #2a3040; color: #fff; border-radius: 8px; }
         .btn-submit { width: 100%; background: #00e5ff; color: #000; padding: 12px; border: none; border-radius: 8px; font-weight: bold; margin-top: 10px; cursor: pointer; }
         
@@ -55,7 +54,6 @@
         <div class="total-grid">
             <div class="total-box bg-big">BIG: <br><span id="totBig">0</span> Ks</div>
             <div class="total-box bg-small">SMALL: <br><span id="totSmall">0</span> Ks</div>
-            <div class="total-box bg-red">RED: <br><span id="totRed">0</span> Ks</div>
             <div class="total-box bg-green">GREEN: <br><span id="totGreen">0</span> Ks</div>
             <div class="total-box bg-violet">VIOLET: <br><span id="totViolet">0</span> Ks</div>
         </div>
@@ -64,7 +62,6 @@
         <div class="flex-btns">
             <button class="btn-ctrl bg-big" onclick="setChoiceResult('BIG')">BIG နိုင်စေမည်</button>
             <button class="btn-ctrl bg-small" onclick="setChoiceResult('SMALL')">SMALL နိုင်စေမည်</button>
-            <button class="btn-ctrl bg-red" onclick="setChoiceResult('RED')">RED နိုင်စေမည်</button>
             <button class="btn-ctrl bg-green" onclick="setChoiceResult('GREEN')">GREEN နိုင်စေမည်</button>
             <button class="btn-ctrl bg-violet" onclick="setChoiceResult('VIOLET')">VIOLET နိုင်စေမည်</button>
         </div>
@@ -116,16 +113,13 @@
                 document.getElementById('timer').innerText = data.timer !== undefined ? data.timer : '--';
                 document.getElementById('forcedStatus').innerText = data.forced;
 
-                // Update Total Bet Values
                 if (data.totals) {
                     document.getElementById('totBig').innerText = data.totals.BIG.toLocaleString();
                     document.getElementById('totSmall').innerText = data.totals.SMALL.toLocaleString();
-                    document.getElementById('totRed').innerText = data.totals.RED.toLocaleString();
                     document.getElementById('totGreen').innerText = data.totals.GREEN.toLocaleString();
                     document.getElementById('totViolet').innerText = data.totals.VIOLET.toLocaleString();
                 }
 
-                // Update Bets List Table
                 const tableBody = document.getElementById('betsTable');
                 if (data.bets && data.bets.length > 0) {
                     tableBody.innerHTML = data.bets.map(bet => `
@@ -143,7 +137,6 @@
             }
         }
 
-        // 1 စက္ကန့်တိုင်း Realtime Auto Refresh ပြုလုပ်ခြင်း
         setInterval(fetchAdminData, 1000);
 
         async function setChoiceResult(choice) {
