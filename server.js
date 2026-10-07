@@ -1,3 +1,4 @@
+
 const express = require('express');
 const path = require('path');
 const admin = require('firebase-admin');
@@ -104,7 +105,7 @@ startGameEngine('60s');
 
 // -------------------------------------------------------------
 // Settle Bets Engine (နိုင်သူများကို 1.95x / 9x ငွေပြန်ပေါင်းပေးမည့် Logic)
-// -------------------------------------------------------------
+// ----------------------------------------------------------// Settle Bets Engine (နိုင်/ရှုံး တွက်ချက်ပြီး ပမာဏများကို ပုံပါအတိုင်း ပြောင်းလဲပေးခြင်း)
 async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColor, resultBS) {
     try {
         const currentBets = activeBets[gameType] || [];
@@ -120,19 +121,28 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
 
             // --- နိုင်/ရှုံး စစ်ဆေးသည့် Logic ---
             if (choice === resultBS) {
-                isWin = true; // BIG or SMALL (1.95x)
+                isWin = true; 
             } else if (choice === resultColor) {
-                isWin = true; // GREEN, VIOLET, RED (1.95x)
+                isWin = true; 
             } else if (choice === String(winningNumber)) {
-                isWin = true; // ဂဏန်း အတိအကျ 0 - 9 (9x)
+                isWin = true; 
             }
 
             bet.status = isWin ? 'Win' : 'Lose';
 
-            // User My History ထဲတွင် Status (Win / Lose) ပြောင်းပေးခြင်း
+            // User My History ထဲတွင် ပုံပါအတိုင်း Win (+195) သို့မဟုတ် Lose (-Amount) ပုံစံပေါ်အောင် ပြင်ဆင်ခြင်း
             if (userBetsHistory[userId]) {
                 let uBet = userBetsHistory[userId].find(b => b.round === roundNumber && b.gameType === gameType);
-                if (uBet) uBet.status = bet.status;
+                if (uBet) {
+                    uBet.status = bet.status;
+                    if (isWin) {
+                        let winMultiplier = (choice === String(winningNumber)) ? 9.0 : 1.95;
+                        let winAmount = amount * winMultiplier;
+                        uBet.displayAmount = `+${winAmount.toLocaleString()} MMK`;
+                    } else {
+                        uBet.displayAmount = `-${amount.toLocaleString()} MMK`;
+                    }
+                }
             }
 
             // --- နိုင်ပါက Firebase Realtime Database 'user/{uid}/money' ထဲသို့ ပေါင်းပေးခြင်း ---
@@ -148,8 +158,6 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
                         return val + winAmount;
                     });
                     console.log(`[WIN SUCCESS] User ${userId} received +${winAmount} MMK`);
-                } else {
-                    console.log(`[ERROR] Firebase Admin Not Initialized! Could not credit ${userId}`);
                 }
             }
         }
@@ -157,7 +165,6 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
         console.error("Settle Bets Error:", error);
     }
 }
-
 // -------------------------------------------------------------
 // 1. APP / USER ENDPOINTS
 // -------------------------------------------------------------
@@ -184,50 +191,83 @@ app.get('/api/user/get-data', (req, res) => {
         myHistory: myHistory
     });
 });
-
+// (B) Place Bet Endpoint (ငွေနုတ်ခြင်း နှင့် Bet တင်ခြင်း)
 app.post('/api/place-bet', async (req, res) => {
-    const { uid, choice, amount, gameType } = req.body;
-    const type = gameType || '30s';
+    try {
+        const uid = req.body.uid || req.query.uid;
+        const choice = req.body.choice || req.query.choice;
+        const amount = req.body.amount || req.query.amount;
+        const gameType = req.body.gameType || req.query.gameType;
+        const type = gameType || '30s';
 
-    if (!uid || !choice || !amount) {
-        return res.status(400).json({ success: false, message: "အချက်အလက် မစုံလင်ပါ!" });
-    }
+        if (!uid || !choice || !amount) {
+            return res.status(400).json({ success: false, message: "အချက်အလက် မစုံလင်ပါ!" });
+        }
 
-    const betAmount = parseFloat(amount);
-    if (isNaN(betAmount) || betAmount <= 0) {
-        return res.status(400).json({ success: false, message: "ထိုးငွေ ပမာဏ မမှန်ကန်ပါ!" });
-    }
+        const betAmount = parseFloat(amount);
+        if (isNaN(betAmount) || betAmount <= 0) {
+            return res.status(400).json({ success: false, message: "ထိုးငွေ ပမာဏ မမှန်ကန်ပါ!" });
+        }
 
-    if (admin.apps.length > 0) {
-        const userMoneyRef = admin.database().ref(`user/${uid}/money`);
+        if (admin.apps.length === 0) {
+            return res.status(500).json({ success: false, message: "Firebase Admin ချိတ်ဆက်မှု မရှိသေးပါ!" });
+        }
+
+        const db = admin.database();
+        const userMoneyRef = db.ref(`user/${uid}/money`);
+        let remainingBalance = 0;
+        let isSuccess = false;
+
+        // Firebase Transaction ဖြင့် လက်ကျန်ငွေ ချက်ချင်း ဖြတ်ယူခြင်း
         await userMoneyRef.transaction((currentMoney) => {
             let val = parseFloat(currentMoney);
             if (isNaN(val)) val = 0;
-            return val - betAmount; // ငွေပေါင်းတဲ့နေရာမှာ + လုပ်သလို ဒီမှာ - လုပ်ပေးလိုက်ပါသည်
+
+            if (val < betAmount) {
+                isSuccess = false;
+                return;
+            }
+
+            remainingBalance = val - betAmount;
+            isSuccess = true;
+            return remainingBalance;
         });
-        console.log(`[BET SUCCESS] User ${uid} deducted -${betAmount} MMK`);
+
+        if (!isSuccess) {
+            return res.status(400).json({ success: false, message: "လက်ကျန်ငွေ မလုံလောက်ပါ!" });
+        }
+
+        const interval = type === '30s' ? 30 : 60;
+        const nowSec = Math.floor(Date.now() / 1000);
+        const currentRound = Math.floor(nowSec / interval);
+
+        const betData = {
+            round: currentRound,
+            choice: String(choice).trim().toUpperCase(),
+            amount: betAmount,
+            gameType: type,
+            status: 'Pending', // ရလဒ်မထွက်မချင်း Pending အဖြစ်ပြရန်
+            displayAmount: `-${betAmount.toLocaleString()} MMK`, // ပုံပါအတိုင်း -100 MMK ပုံစံပြရန်
+            time: Date.now()
+        };
+
+        activeBets[type].push({ uid, ...betData });
+
+        if (!userBetsHistory[uid]) userBetsHistory[uid] = [];
+        userBetsHistory[uid].unshift(betData);
+
+        return res.json({ 
+            success: true, 
+            message: "ထိုးကြေး အောင်မြင်စွာ တင်ပြီးပါပြီ!",
+            balance: remainingBalance 
+        });
+
+    } catch (error) {
+        console.error("Place Bet Error:", error);
+        return res.status(500).json({ success: false, error: error.message });
     }
-
-    const interval = type === '30s' ? 30 : 60;
-    const nowSec = Math.floor(Date.now() / 1000);
-    const currentRound = Math.floor(nowSec / interval);
-
-    const betData = {
-        round: currentRound,
-        choice: String(choice).trim().toUpperCase(),
-        amount: betAmount,
-        gameType: type,
-        status: 'Pending',
-        time: Date.now()
-    };
-
-    activeBets[type].push({ uid, ...betData });
-
-    if (!userBetsHistory[uid]) userBetsHistory[uid] = [];
-    userBetsHistory[uid].unshift(betData);
-
-    return res.json({ success: true, message: "ထိုးကြေး အောင်မြင်စွာ တင်ပြီးပါပြီ!" });
 });
+
 
 // 2. ADMIN ENDPOINTS
 // -------------------------------------------------------------
