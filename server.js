@@ -187,7 +187,7 @@ app.get('/api/user/get-data', async (req, res) => {
     }
 });
 
-// Place Bet Endpoint (ငွေကို သေချာပေါက် ဖြတ်ယူရန် ပြင်ဆင်ထားသည်)
+// Place Bet Endpoint (Body, Query နှစ်မျိုးစလုံးကို သေချာဖတ်ပြီး ငွေဖြတ်ရန်)
 app.all('/api/place-bet', async (req, res) => {
     try {
         const uid = req.body.uid || req.query.uid;
@@ -205,7 +205,7 @@ app.all('/api/place-bet', async (req, res) => {
 
         const betAmount = parseFloat(amount);
         if (isNaN(betAmount) || betAmount <= 0) {
-            return res.status(400).json({ message: "ထိုးငွေ ပမာဏ မမှန်ကန်ပါ!" });
+            return res.status(400).json({ success: false, message: "ထိုးငွေ ပမာဏ မမှန်ကန်ပါ!" });
         }
 
         if (admin.apps.length === 0) {
@@ -216,13 +216,13 @@ app.all('/api/place-bet', async (req, res) => {
         const userMoneyRef = db.ref(`user/${uid}/money`);
         let remainingBalance = 0;
 
-        // Firebase Transaction ဖြင့် ငွေကို တိုက်ရိုက်နုတ်ယူပြီး committed ဖြစ်မဖြစ် စစ်ဆေးခြင်း
+        // Firebase Transaction ဖြင့် လက်ကျန်ငွေမှ ချက်ချင်း ဖြတ်ယူခြင်း
         const txResult = await userMoneyRef.transaction((currentMoney) => {
             let val = parseFloat(currentMoney);
             if (isNaN(val)) val = 0;
 
             if (val < betAmount) {
-                return; // ငွေမလုံလောက်ပါက မနုတ်ဘဲ ရပ်မည်
+                return; // ငွေမလုံလောက်ပါက မနုတ်ပါ
             }
 
             remainingBalance = val - betAmount;
@@ -250,6 +250,7 @@ app.all('/api/place-bet', async (req, res) => {
         betData.firebaseKey = newBetRef.key;
         await newBetRef.set(betData);
 
+        // Admin ဘက်တွင် မြင်ရစေရန် activeBets ထဲသို့ ထည့်သွင်းခြင်း
         activeBets[type].push({ uid, ...betData });
         console.log(`[SUCCESS] User ${uid} bet ${betAmount} on ${choice}. Remaining balance: ${remainingBalance}`);
 
