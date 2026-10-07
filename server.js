@@ -187,7 +187,7 @@ app.get('/api/user/get-data', async (req, res) => {
     }
 });
 
-// Place Bet Endpoint (Body, Query နှစ်မျိုးစလုံးကို သေချာဖတ်ပြီး ငွေဖြတ်ရန်)
+// Place Bet Endpoint (Query နဲ့ Body နှစ်မျိုးစလုံးကို သေချာဖတ်ပေးရန်)
 app.all('/api/place-bet', async (req, res) => {
     try {
         const uid = req.body.uid || req.query.uid;
@@ -197,14 +197,16 @@ app.all('/api/place-bet', async (req, res) => {
         const type = gameType || '30s';
 
         console.log("=== PLACE BET CALLED ===");
-        console.log("Params -> uid:", uid, "choice:", choice, "amount:", amount, "gameType:", type);
+        console.log("Incoming Data -> uid:", uid, "choice:", choice, "amount:", amount, "gameType:", type);
 
         if (!uid || !choice || !amount) {
+            console.log("[ERROR] Missing parameters!");
             return res.status(400).json({ success: false, message: "အချက်အလက် မစုံလင်ပါ!" });
         }
 
         const betAmount = parseFloat(amount);
         if (isNaN(betAmount) || betAmount <= 0) {
+            console.log("[ERROR] Invalid amount:", amount);
             return res.status(400).json({ success: false, message: "ထိုးငွေ ပမာဏ မမှန်ကန်ပါ!" });
         }
 
@@ -215,22 +217,27 @@ app.all('/api/place-bet', async (req, res) => {
         const db = admin.database();
         const userMoneyRef = db.ref(`user/${uid}/money`);
         let remainingBalance = 0;
+        let isSuccess = false;
 
-        // Firebase Transaction ဖြင့် လက်ကျန်ငွေမှ ချက်ချင်း ဖြတ်ယူခြင်း
-        const txResult = await userMoneyRef.transaction((currentMoney) => {
+        // Firebase Transaction ဖြင့် ငွေ ချက်ချင်းနုတ်ယူခြင်း
+        await userMoneyRef.transaction((currentMoney) => {
             let val = parseFloat(currentMoney);
             if (isNaN(val)) val = 0;
 
+            console.log("DB Current Money:", val, "Bet Amount:", betAmount);
+
             if (val < betAmount) {
+                isSuccess = false;
                 return; // ငွေမလုံလောက်ပါက မနုတ်ပါ
             }
 
             remainingBalance = val - betAmount;
+            isSuccess = true;
             return remainingBalance;
         });
 
-        if (!txResult.committed) {
-            return res.status(400).json({ success: false, message: "လက်ကျန်ငွေ မလုံလောက်ပါ (သို့မဟုတ်) ငွေဖြတ်၍ မရပါ!" });
+        if (!isSuccess) {
+            return res.status(400).json({ success: false, message: "လက်ကျန်ငွေ မလုံလောက်ပါ!" });
         }
 
         const interval = type === '30s' ? 30 : 60;
@@ -250,7 +257,6 @@ app.all('/api/place-bet', async (req, res) => {
         betData.firebaseKey = newBetRef.key;
         await newBetRef.set(betData);
 
-        // Admin ဘက်တွင် မြင်ရစေရန် activeBets ထဲသို့ ထည့်သွင်းခြင်း
         activeBets[type].push({ uid, ...betData });
         console.log(`[SUCCESS] User ${uid} bet ${betAmount} on ${choice}. Remaining balance: ${remainingBalance}`);
 
