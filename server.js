@@ -150,3 +150,53 @@ app.get('/admin', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// 1. Result ထွက်လာချိန်တွင် Win/Lose စစ်ပြီး ငွေပေါင်းပေးမည့် Function
+async function settleBets(roundNumber, winningNumber, resultColor, resultBS) {
+    try {
+        const betsRef = admin.database().ref(`bets/${roundNumber}`);
+        const snapshot = await betsRef.once('value');
+        const bets = snapshot.val();
+
+        if (!bets) return; // ဒီ Round မှာ ဘယ်သူမှ မထိုးထားရင် ကျော်မည်
+
+        for (let userId in bets) {
+            let userBet = bets[userId];
+            let amount = parseFloat(userBet.amount || 0);
+            let choice = String(userBet.choice || '').toUpperCase();
+            let isWin = false;
+
+            // --- နိုင်/ရှုံး စစ်ဆေးသည့် Logic ---
+            // ၁။ Big / Small ကိုက်ညီပါက
+            if (choice === resultBS.toUpperCase()) {
+                isWin = true;
+            }
+            // ၂။ Color (GREEN, VIOLET, RED) ကိုက်ညီပါက
+            else if (choice === resultColor.toUpperCase()) {
+                isWin = true;
+            }
+            // ၃။ ဂဏန်း အတိအကျ (0 - 9) ကိုက်ညီပါက
+            else if (choice === String(winningNumber)) {
+                isWin = true;
+            }
+
+            // --- နိုင်ပါက ငွေပြန်ပေါင်းပေးခြင်း ---
+            if (isWin) {
+                let winAmount = amount * 1.95; // 100 ထိုးရင် 195 ပေါင်းပေးမည်
+
+                // User Balance (money) ထဲသို့ နိုင်ကြေး ပေါင်းထည့်ခြင်း
+                const userMoneyRef = admin.database().ref(`user/${userId}/money`);
+                await userMoneyRef.transaction((currentMoney) => {
+                    return (parseFloat(currentMoney) || 0) + winAmount;
+                });
+
+                // User Bet History Status ကို 'Win' ဟု ပြောင်းခြင်း
+                await admin.database().ref(`bets/${roundNumber}/${userId}/status`).set('Win');
+            } else {
+                // ရှုံးပါက Status ကို 'Lose' ဟု ပြောင်းခြင်း
+                await admin.database().ref(`bets/${roundNumber}/${userId}/status`).set('Lose');
+            }
+        }
+    } catch (error) {
+        console.error("Settle Bets Error:", error);
+    }
+}
