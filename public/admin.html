@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Control Panel</title>
+    <style>
+        body { font-family: sans-serif; background-color: #12151e; color: #ffffff; margin: 0; padding: 15px; }
+        .card { background: #1a1e29; padding: 20px; border-radius: 12px; border: 1px solid #2a3040; margin-bottom: 15px; }
+        h2 { text-align: center; color: #00e5ff; margin-top: 0; }
+        .tab-container { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab-btn { flex: 1; padding: 12px; border: none; background: #2a3040; color: #8a99ad; font-weight: bold; border-radius: 8px; cursor: pointer; font-size: 16px; }
+        .tab-btn.active { background: #00e5ff; color: #000; }
+        .info-box { background: #11141d; padding: 15px; border-radius: 8px; border-left: 4px solid #00e5ff; margin-bottom: 20px; }
+        .info-title { color: #ff9800; font-weight: bold; }
+        .flex-btns { display: flex; gap: 10px; margin-top: 10px; }
+        .btn-red { flex: 1; background: #e53935; color: #fff; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn-green { flex: 1; background: #43a047; color: #fff; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        input { width: 100%; padding: 12px; margin-top: 10px; box-sizing: border-box; background: #11141d; border: 1px solid #2a3040; color: #fff; border-radius: 8px; }
+        .btn-submit { width: 100%; background: #00e5ff; color: #000; padding: 12px; border: none; border-radius: 8px; font-weight: bold; margin-top: 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>🎮 Game Control Panel</h2>
+
+        <!-- 30s / 60s Tab Switcher -->
+        <div class="tab-container">
+            <button id="btn30s" class="tab-btn active" onclick="switchGame('30s')">30 Seconds Game</button>
+            <button id="btn60s" class="tab-btn" onclick="switchGame('60s')">60 Seconds Game</button>
+        </div>
+
+        <!-- Dynamic Game Status Info -->
+        <div class="info-box">
+            <div>လက်ရှိ Game Mode: <span id="currentGameMode" style="color:#00e5ff; font-weight:bold;">30s</span></div>
+            <div>လက်ရှိ Round: <span id="roundNo" class="info-title">00000001</span></div>
+            <div>ကျန်ရှိချိန်: <span id="timer" style="color:#ff9800;">00</span> စက္ကန့်</div>
+            <div>ကြိုပြင်ထားသော Result: <span id="forcedStatus" style="color:#00e5ff;">Auto (မပြင်ထားပါ)</span></div>
+        </div>
+
+        <h3>၁။ Big / Small ကြိုတင်သတ်မှတ်မည်</h3>
+        <div class="flex-btns">
+            <button class="btn-red" onclick="setChoiceResult('BIG')">BIG နိုင်စေမည်</button>
+            <button class="btn-green" onclick="setChoiceResult('SMALL')">SMALL နိုင်စေမည်</button>
+        </div>
+
+        <h3 style="margin-top:20px;">၂။ ဂဏန်း အတိအကျ (0 - 9)</h3>
+        <input type="number" id="forcedNumber" min="0" max="9" placeholder="ဂဏန်း ရိုက်ထည့်ပါ (0 - 9)">
+        <button class="btn-submit" onclick="setNumberResult()">ဂဏန်း အတည်ပြုမည်</button>
+    </div>
+
+    <script>
+        let currentGame = '30s';
+
+        function switchGame(type) {
+            currentGame = type;
+            document.getElementById('currentGameMode').innerText = type;
+            
+            if (type === '30s') {
+                document.getElementById('btn30s').classList.add('active');
+                document.getElementById('btn60s').classList.remove('active');
+            } else {
+                document.getElementById('btn60s').classList.add('active');
+                document.getElementById('btn30s').classList.remove('active');
+            }
+        }
+
+        async function setChoiceResult(choice) {
+            const res = await fetch('/api/admin/set-result', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gameType: currentGame, choice: choice })
+            });
+            const data = await res.json();
+            alert(data.message);
+        }
+
+        async function setNumberResult() {
+            const num = document.getElementById('forcedNumber').value;
+            if (num === "") return alert("ဂဏန်း ရိုက်ထည့်ပါ!");
+
+            const res = await fetch('/api/admin/set-result', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gameType: currentGame, number: parseInt(num) })
+            });
+            const data = await res.json();
+            alert(data.message);
+        }
+    </script>
+</body>
+</html>
