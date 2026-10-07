@@ -7,7 +7,7 @@
     <style>
         body { font-family: sans-serif; background-color: #12151e; color: #ffffff; margin: 0; padding: 15px; }
         .card { background: #1a1e29; padding: 20px; border-radius: 12px; border: 1px solid #2a3040; margin-bottom: 15px; }
-        h2 { text-align: center; color: #00e5ff; margin-top: 0; }
+        h2, h3 { text-align: center; color: #00e5ff; margin-top: 0; }
         .tab-container { display: flex; gap: 10px; margin-bottom: 20px; }
         .tab-btn { flex: 1; padding: 12px; border: none; background: #2a3040; color: #8a99ad; font-weight: bold; border-radius: 8px; cursor: pointer; font-size: 16px; }
         .tab-btn.active { background: #00e5ff; color: #000; }
@@ -18,6 +18,11 @@
         .btn-green { flex: 1; background: #43a047; color: #fff; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
         input { width: 100%; padding: 12px; margin-top: 10px; box-sizing: border-box; background: #11141d; border: 1px solid #2a3040; color: #fff; border-radius: 8px; }
         .btn-submit { width: 100%; background: #00e5ff; color: #000; padding: 12px; border: none; border-radius: 8px; font-weight: bold; margin-top: 10px; cursor: pointer; }
+        
+        /* Table Styles */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #2a3040; padding: 10px; text-align: center; font-size: 14px; }
+        th { background: #11141d; color: #00e5ff; }
     </style>
 </head>
 <body>
@@ -25,17 +30,16 @@
     <div class="card">
         <h2>🎮 Game Control Panel</h2>
 
-        <!-- 30s / 60s Tab Switcher -->
+        <!-- Tab Switcher -->
         <div class="tab-container">
             <button id="btn30s" class="tab-btn active" onclick="switchGame('30s')">30 Seconds Game</button>
             <button id="btn60s" class="tab-btn" onclick="switchGame('60s')">60 Seconds Game</button>
         </div>
 
-        <!-- Dynamic Game Status Info -->
+        <!-- Live Status Info -->
         <div class="info-box">
             <div>လက်ရှိ Game Mode: <span id="currentGameMode" style="color:#00e5ff; font-weight:bold;">30s</span></div>
-            <div>လက်ရှိ Round: <span id="roundNo" class="info-title">00000001</span></div>
-            <div>ကျန်ရှိချိန်: <span id="timer" style="color:#ff9800;">00</span> စက္ကန့်</div>
+            <div>ကျန်ရှိချိန်: <span id="timer" style="color:#ff9800; font-size: 20px; font-weight: bold;">--</span> စက္ကန့်</div>
             <div>ကြိုပြင်ထားသော Result: <span id="forcedStatus" style="color:#00e5ff;">Auto (မပြင်ထားပါ)</span></div>
         </div>
 
@@ -48,6 +52,23 @@
         <h3 style="margin-top:20px;">၂။ ဂဏန်း အတိအကျ (0 - 9)</h3>
         <input type="number" id="forcedNumber" min="0" max="9" placeholder="ဂဏန်း ရိုက်ထည့်ပါ (0 - 9)">
         <button class="btn-submit" onclick="setNumberResult()">ဂဏန်း အတည်ပြုမည်</button>
+    </div>
+
+    <!-- Live Bet Table -->
+    <div class="card">
+        <h3>📊 လက်ရှိ Round ထိုးထားသော စာရင်းများ</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Choice</th>
+                    <th>Amount</th>
+                </tr>
+            </thead>
+            <tbody id="betsTable">
+                <tr><td colspan="3">ထိုးကြေး စာရင်း မရှိသေးပါ...</td></tr>
+            </tbody>
+        </table>
     </div>
 
     <script>
@@ -64,7 +85,51 @@
                 document.getElementById('btn60s').classList.add('active');
                 document.getElementById('btn30s').classList.remove('active');
             }
+            updateAdminData();
         }
+
+        // Live Timer Calculation
+        function updateTimer() {
+            const now = Math.floor(Date.now() / 1000);
+            const interval = currentGame === '30s' ? 30 : 60;
+            const remaining = interval - (now % interval);
+            document.getElementById('timer').innerText = remaining;
+        }
+
+        setInterval(updateTimer, 1000);
+        updateTimer();
+
+        // Fetch Live Bets & Admin Data
+        async function updateAdminData() {
+            try {
+                const res = await fetch(`/api/admin/get-data?gameType=${currentGame}`);
+                const data = await res.json();
+                
+                if (data.forced) {
+                    document.getElementById('forcedStatus').innerText = data.forced;
+                } else {
+                    document.getElementById('forcedStatus').innerText = "Auto (မပြင်ထားပါ)";
+                }
+
+                const tableBody = document.getElementById('betsTable');
+                if (data.bets && data.bets.length > 0) {
+                    tableBody.innerHTML = data.bets.map(bet => `
+                        <tr>
+                            <td>${bet.uid.substring(0, 6)}...</td>
+                            <td style="color: #00e5ff; font-weight: bold;">${bet.choice}</td>
+                            <td style="color: #4caf50;">${bet.amount} MMK</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tableBody.innerHTML = '<tr><td colspan="3">ထိုးကြေး စာရင်း မရှိသေးပါ...</td></tr>';
+                }
+            } catch (e) {
+                console.log("Error loading data:", e);
+            }
+        }
+
+        // Auto Refresh Bet Table every 3 seconds
+        setInterval(updateAdminData, 3000);
 
         async function setChoiceResult(choice) {
             const res = await fetch('/api/admin/set-result', {
@@ -74,6 +139,7 @@
             });
             const data = await res.json();
             alert(data.message);
+            updateAdminData();
         }
 
         async function setNumberResult() {
@@ -87,6 +153,8 @@
             });
             const data = await res.json();
             alert(data.message);
+            document.getElementById('forcedNumber').value = "";
+            updateAdminData();
         }
     </script>
 </body>
