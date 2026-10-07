@@ -54,21 +54,15 @@ function startGameEngine(gameType) {
                 let c = forced.choice.toUpperCase();
                 if (c === "BIG") winningNumber = 5 + Math.floor(Math.random() * 5);
                 else if (c === "SMALL") winningNumber = Math.floor(Math.random() * 5);
-                else if (c === "GREEN") winningNumber = [1, 3, 7, 9][Math.floor(Math.random() * 4)];
-                else if (c === "RED") winningNumber = [2, 4, 6, 8][Math.floor(Math.random() * 4)];
-                else if (c === "VIOLET") winningNumber = [0, 5][Math.floor(Math.random() * 2)];
+                else if (c === "GREEN") winningNumber = [0, 2, 4, 6, 8][Math.floor(Math.random() * 5)];
+                else if (c === "VIOLET") winningNumber = [1, 3, 5, 7, 9][Math.floor(Math.random() * 5)];
                 else winningNumber = Math.floor(Math.random() * 10);
             } else {
                 winningNumber = Math.floor(Math.random() * 10);
             }
 
-            if (winningNumber === 0 || winningNumber === 5) {
-                resultColor = "VIOLET";
-            } else if (winningNumber % 2 === 0) {
-                resultColor = "RED";
-            } else {
-                resultColor = "GREEN";
-            }
+            // Only GREEN and VIOLET are supported; RED is intentionally excluded.
+            resultColor = winningNumber % 2 === 0 ? "GREEN" : "VIOLET";
 
             resultBS = winningNumber >= 5 ? "BIG" : "SMALL";
 
@@ -120,23 +114,64 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
 
             let status = isWin ? 'Win' : 'Lose';
 
-            if (admin.apps.length > 0) {
+            if (admin.apps.length > 0 && bet.firebaseKey) {
                 const db = admin.database();
+                const betRef = db.ref(`userBetsHistory/${userId}/${bet.firebaseKey}`);
 
-                if (bet.firebaseKey) {
-                    await db.ref(`userBetsHistory/${userId}/${bet.firebaseKey}`).update({ status: status });
+                // Mark the bet as settled. A Win/Pending bet is also allowed to
+                // continue after a temporary failure between settlement and payout.
+                const settleResult = await betRef.transaction((currentBet) => {
+                    if (!currentBet) return;
+                    const canResumePayout = isWin && currentBet.status === 'Win' && currentBet.payoutStatus === 'Pending';
+                    if (currentBet.status !== 'Pending' && !canResumePayout) return;
+                    if (canResumePayout) return currentBet;
+                    return {
+                        ...currentBet,
+                        status,
+                        settledAt: currentBet.settledAt || Date.now(),
+                        payoutStatus: isWin ? 'Pending' : 'NotRequired'
+                    };
+                });
+
+                if (!settleResult.committed) {
+                    console.log(`[SKIP] Bet ${bet.firebaseKey} was already settled or removed.`);
+                    continue;
                 }
 
                 if (isWin) {
-                    let winMultiplier = (choice === String(winningNumber)) ? 9.0 : 1.95;
-                    let winAmount = amount * winMultiplier;
+                    const winMultiplier = (choice === String(winningNumber)) ? 9.0 : 1.95;
+                    const winAmount = amount * winMultiplier;
+                    const userRef = db.ref(`user/${userId}`);
 
-                    const userMoneyRef = db.ref(`user/${userId}/money`);
-                    await userMoneyRef.transaction((currentMoney) => {
-                        let val = parseFloat(currentMoney);
+                    // Money and the payout ledger are changed in ONE transaction.
+                    // Therefore retries cannot credit the same bet twice.
+                    const moneyResult = await userRef.transaction((currentUser) => {
+                        const user = currentUser && typeof currentUser === 'object' ? { ...currentUser } : {};
+                        const payouts = user.payouts && typeof user.payouts === 'object' ? { ...user.payouts } : {};
+                        if (payouts[bet.firebaseKey]) return;
+
+                        let val = parseFloat(user.money);
                         if (isNaN(val)) val = 0;
-                        return val + winAmount;
+                        user.money = val + winAmount;
+                        payouts[bet.firebaseKey] = {
+                            amount: winAmount,
+                            round: roundNumber,
+                            paidAt: Date.now()
+                        };
+                        user.payouts = payouts;
+                        return user;
                     });
+
+                    if (!moneyResult.committed) {
+                        // It was already credited by a previous retry, or the transaction failed.
+                        const latest = await userRef.once('value');
+                        const latestUser = latest.val() || {};
+                        if (!latestUser.payouts || !latestUser.payouts[bet.firebaseKey]) {
+                            throw new Error(`Could not credit payout for bet ${bet.firebaseKey}`);
+                        }
+                    }
+
+                    await betRef.update({ payoutStatus: 'Paid', paidAmount: winAmount, paidAt: Date.now() });
                     console.log(`[WIN SUCCESS] User ${userId} received +${winAmount} MMK`);
                 }
             }
@@ -195,6 +230,9 @@ app.all('/api/place-bet', async (req, res) => {
         const amount = req.body.amount || req.query.amount;
         const gameType = req.body.gameType || req.query.gameType;
         const type = gameType || '30s';
+        if (!['30s', '60s'].includes(type)) {
+            return res.status(400).json({ success: false, message: "Game Type မမှန်ကန်ပါ!" });
+        }
 
         console.log("=== PLACE BET CALLED ===");
         console.log("Incoming Data -> uid:", uid, "choice:", choice, "amount:", amount, "gameType:", type);
@@ -220,25 +258,24 @@ app.all('/api/place-bet', async (req, res) => {
         let isSuccess = false;
 
         // Firebase Transaction ဖြင့် ငွေ ချက်ချင်းနုတ်ယူခြင်း
-        await userMoneyRef.transaction((currentMoney) => {
+        // Always use the committed result, not a flag set inside the callback.
+        // Firebase may execute a transaction callback more than once.
+        const debitResult = await userMoneyRef.transaction((currentMoney) => {
             let val = parseFloat(currentMoney);
             if (isNaN(val)) val = 0;
 
             console.log("DB Current Money:", val, "Bet Amount:", betAmount);
 
-            if (val < betAmount) {
-                isSuccess = false;
-                return; // ငွေမလုံလောက်ပါက မနုတ်ပါ
-            }
-
-            remainingBalance = val - betAmount;
-            isSuccess = true;
-            return remainingBalance;
+            if (val < betAmount) return; // abort: insufficient balance
+            return val - betAmount;
         });
 
-        if (!isSuccess) {
+        if (!debitResult.committed) {
             return res.status(400).json({ success: false, message: "လက်ကျန်ငွေ မလုံလောက်ပါ!" });
         }
+
+        remainingBalance = parseFloat(debitResult.snapshot.val()) || 0;
+        isSuccess = true;
 
         const interval = type === '30s' ? 30 : 60;
         const nowSec = Math.floor(Date.now() / 1000);
@@ -255,8 +292,23 @@ app.all('/api/place-bet', async (req, res) => {
 
         const newBetRef = db.ref(`userBetsHistory/${uid}`).push();
         betData.firebaseKey = newBetRef.key;
-        await newBetRef.set(betData);
+        try {
+            await newBetRef.set(betData);
+        } catch (historyError) {
+            // Verify first: a timeout may happen after Firebase has already saved the record.
+            // Refund only when the bet truly does not exist, preventing double refunds.
+            const savedBet = await newBetRef.once('value');
+            if (!savedBet.exists()) {
+                await userMoneyRef.transaction((currentMoney) => {
+                    let val = parseFloat(currentMoney);
+                    if (isNaN(val)) val = 0;
+                    return val + betAmount;
+                });
+            }
+            throw new Error(`Bet record failed; money was refunded only when necessary. ${historyError.message}`);
+        }
 
+        if (!activeBets[type]) activeBets[type] = [];
         activeBets[type].push({ uid, ...betData });
         console.log(`[SUCCESS] User ${uid} bet ${betAmount} on ${choice}. Remaining balance: ${remainingBalance}`);
 
@@ -286,7 +338,7 @@ app.get('/api/admin/get-data', (req, res) => {
 
     const bets = activeBets[gameType] || [];
 
-    let totals = { BIG: 0, SMALL: 0, GREEN: 0, VIOLET: 0, RED: 0 };
+    let totals = { BIG: 0, SMALL: 0, GREEN: 0, VIOLET: 0 };
     bets.forEach(b => {
         const c = b.choice.toUpperCase();
         if (totals[c] !== undefined) totals[c] += b.amount;
@@ -310,11 +362,20 @@ app.get('/api/admin/get-data', (req, res) => {
 
 app.post('/api/admin/set-result', (req, res) => {
     const { gameType, choice, number } = req.body;
-    if (gameType) {
-        forcedResults[gameType] = { choice, number };
-        return res.json({ success: true, message: `${gameType} အတွက် ရလဒ် သတ်မှတ်ပြီးပါပြီ!` });
+    const allowedChoices = ['BIG', 'SMALL', 'GREEN', 'VIOLET'];
+    const normalizedChoice = choice ? String(choice).trim().toUpperCase() : '';
+    const hasNumber = number !== undefined && number !== null && number !== '';
+    const validNumber = !hasNumber || (Number.isInteger(Number(number)) && Number(number) >= 0 && Number(number) <= 9);
+
+    if (!['30s', '60s'].includes(gameType)) {
+        return res.status(400).json({ success: false, message: "Game Type မှားယွင်းနေပါသည်!" });
     }
-    return res.status(400).json({ success: false, message: "Game Type မှားယွင်းနေပါသည်!" });
+    if ((normalizedChoice && !allowedChoices.includes(normalizedChoice)) || !validNumber) {
+        return res.status(400).json({ success: false, message: "BIG / SMALL / GREEN / VIOLET သာ အသုံးပြုနိုင်ပါသည်!" });
+    }
+
+    forcedResults[gameType] = { choice: normalizedChoice || null, number: hasNumber ? Number(number) : null };
+    return res.json({ success: true, message: `${gameType} အတွက် ရလဒ် သတ်မှတ်ပြီးပါပြီ!` });
 });
 
 app.get('/admin', (req, res) => {
