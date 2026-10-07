@@ -288,7 +288,7 @@ app.get('/api/admin/get-data', (req, res) => {
     });
 
     const forced = forcedResults[gameType];
-    let forcedStr = "Auto (win)";
+    let forcedStr = "Auto ( အရမ်ချစ်တယ်)";
     if (forced) {
         if (forced.choice) forcedStr = forced.choice;
         if (forced.number !== undefined && forced.number !== null && forced.number !== "") forcedStr = `ဂဏန်း (${forced.number})`;
