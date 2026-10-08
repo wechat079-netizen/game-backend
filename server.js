@@ -11,13 +11,24 @@ const io = new Server(server);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Firebase Initialization 
-const serviceAccount = require('./right-2c598-firebase-adminsdk-fbsvc-b86013f3a3.json');
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  databaseURL: "https://right-2c598-default-rtdb.firebaseio.com/"
-});
+// Render မှာ JSON ဖိုင်ပြဿနာမရှိစေရန် (သို့မဟုတ် Local မှာ JSON ဖိုင်နဲ့ချိတ်ရန်)
+try {
+    const serviceAccount = require('./right-2c598-firebase-adminsdk-fbsvc-b86013f3a3.json');
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      databaseURL: "https://right-2c598-default-rtdb.firebaseio.com/"
+    });
+} catch (e) {
+    // Render အတွက် Environment Variable (သို့မဟုတ် Default Initialization)
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined
+      }),
+      databaseURL: "https://right-2c598-default-rtdb.firebaseio.com/"
+    });
+}
 
 const db = admin.database();
 
