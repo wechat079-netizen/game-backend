@@ -63,7 +63,7 @@ function startGameEngine(gameType) {
                 let totals = { 
                     '0': 0, '1': 0, '2': 0, '3': 0, '4': 0, 
                     '5': 0, '6': 0, '7': 0, '8': 0, '9': 0,
-                    'BIG': 0, 'SMALL': 0 
+                    'BIG': 0, 'SMALL': 0, 'GREEN': 0, 'VIOLET': 0 
                 };
 
                 currentBets.forEach(b => {
@@ -81,11 +81,17 @@ function startGameEngine(gameType) {
                 for (let num = 0; num <= 9; num++) {
                     let betSum = totals[String(num)] || 0;
                     
-                    // BIG / SMALL ထိုးထားမှုများကိုပါ သက်ဆိုင်ရာ ဂဏန်းများဆီသို့ ထည့်သွင်း စဉ်းစားနိုင်သည်
+                    // BIG / SMALL နှင့် အရောင် ထိုးထားမှုများကိုပါ သက်ဆိုင်ရာ ဂဏန်းများဆီသို့ ထည့်သွင်း စဉ်းစားမည်
                     if (num >= 5) {
                         betSum += (totals['BIG'] || 0);
                     } else {
                         betSum += (totals['SMALL'] || 0);
+                    }
+
+                    if (num === 0 || num === 2 || num === 4 || num === 6 || num === 8) {
+                        betSum += (totals['GREEN'] || 0);
+                    } else {
+                        betSum += (totals['VIOLET'] || 0);
                     }
 
                     if (betSum < minBet) {
@@ -100,11 +106,11 @@ function startGameEngine(gameType) {
                 winningNumber = bestNumbers[Math.floor(Math.random() * bestNumbers.length)];
             }
 
-            // အရောင်နှင့် Big/Small သတ်မှတ်ခြင်း (ပုံပါအတိုင်း 0, 2, 4, 6, 8 = GREEN / 1, 3, 5, 7, 9 = PURPLE)
+            // အရောင်နှင့် Big/Small သတ်မှတ်ခြင်း (0, 2, 4, 6, 8 = GREEN / 1, 3, 5, 7, 9 = VIOLET)
             if (winningNumber === 0 || winningNumber === 2 || winningNumber === 4 || winningNumber === 6 || winningNumber === 8) {
                 resultColor = "GREEN";
             } else {
-                resultColor = "PURPLE";
+                resultColor = "VIOLET";
             }
 
             resultBS = winningNumber >= 5 ? "BIG" : "SMALL";
@@ -150,7 +156,7 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
 
             if (choice === resultBS) {
                 isWin = true; 
-            } else if (choice === resultColor || (resultColor === "PURPLE" && choice === "VIOLET")) {
+            } else if (choice === resultColor) {
                 isWin = true; 
             } else if (choice === String(winningNumber)) {
                 isWin = true; 
@@ -264,7 +270,7 @@ app.get('/api/admin/get-data', (req, res) => {
 
     const bets = activeBets[gameType] || [];
 
-    let totals = { BIG: 0, SMALL: 0, GREEN: 0, PURPLE: 0, VIOLET: 0 };
+    let totals = { BIG: 0, SMALL: 0, GREEN: 0, VIOLET: 0 };
     bets.forEach(b => {
         const c = b.choice.toUpperCase();
         if (totals[c] !== undefined) totals[c] += b.amount;
