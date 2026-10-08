@@ -29,7 +29,6 @@
         th, td { border: 1px solid #2a3040; padding: 10px; text-align: center; font-size: 13px; }
         th { background: #11141d; color: #00e5ff; }
 
-        /* Login Modal Overlay */
         #loginOverlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(18, 21, 30, 0.95); display: flex; justify-content: center; align-items: center; z-index: 999;
@@ -39,12 +38,12 @@
 </head>
 <body>
 
-    <!-- Admin Password Login Screen -->
+    <!-- Simple Login Screen -->
     <div id="loginOverlay">
         <div class="login-card">
             <h3>🔐 Admin Login</h3>
-            <p style="font-size: 13px; color: #8a99ad;">Password ထည့်သွင်းပါ</p>
-            <input type="password" id="adminPasswordInput" placeholder="Password ထည့်ရန်">
+            <p style="font-size: 13px; color: #8a99ad;">ဝင်ရန် Password ရိုက်ပါ (သို့) admin ဟုထည့်ပါ</p>
+            <input type="text" id="adminPasswordInput" placeholder="Password or admin">
             <button class="btn-submit" onclick="verifyLogin()">ဝင်မည်</button>
         </div>
     </div>
@@ -102,26 +101,25 @@
 
     <script>
         let currentGame = '30s';
-        let isLoggedIn = localStorage.getItem('is_admin_logged') === 'true';
 
-        // တခါဝင်ထားပြီးသားဆိုရင် Login Box ကို ဖျောက်မည်
-        if (isLoggedIn) {
+        // စစချင်း ဝင်ထားပြီးသားလား စစ်မည်
+        if (localStorage.getItem('is_admin_logged') === 'true') {
             document.getElementById('loginOverlay').style.display = 'none';
             fetchAdminData();
             setInterval(fetchAdminData, 1000);
         }
 
         function verifyLogin() {
-            const pwd = document.getElementById('adminPasswordInput').value;
+            const pwd = document.getElementById('adminPasswordInput').value.trim();
             
-            // သတ်မှတ်ထားသော Password နှစ်ခုထဲမှ တစ်ခုခုမှန်ကန်ပါက
-            if (pwd === "Peter125199*" || pwd === "Win125199*") {
+            // ဘာစာသားပဲဖြစ်ဖြစ် (သို့ အလွတ်မဟုတ်ရင်) ဝင်ခွင့်ပေးမည်
+            if (pwd !== "") {
                 localStorage.setItem('is_admin_logged', 'true');
                 document.getElementById('loginOverlay').style.display = 'none';
                 fetchAdminData();
                 setInterval(fetchAdminData, 1000);
             } else {
-                alert("Password မှားယွင်းနေပါသည်!");
+                alert("ကျေးဇူးပြု၍ စာသားတစ်ခုခု ရိုက်ထည့်ပါ!");
             }
         }
 
