@@ -94,7 +94,7 @@ function startGameEngine(gameType) {
       gameHistory[gameType].unshift(historyItem);
       if (gameHistory[gameType].length > 30) gameHistory[gameType].pop();
 
-      // Bet တင်ထားသူများကို ငွေရှင်းပေးခြင်း (တစ်ခုချင်းစီ သီးသန့် စစ်ဆေးမည်)
+      // Bet တင်ထားသူများကို ငွေရှင်းပေးခြင်း
       await settleBetsEngine(gameType, currentRound, winningNumber, resultColor, resultBS);
 
       // Round ပြီးသွားပါက Memory Clear ပြုလုပ်ခြင်း
@@ -109,7 +109,7 @@ startGameEngine('30s');
 startGameEngine('60s');
 
 // -------------------------------------------------------------
-// Settle Bets Engine (Bet တစ်ခုချင်းစီကို သီးသန့် Win/Lose တွက်ပေးခြင်း)
+// Settle Bets Engine
 // -------------------------------------------------------------
 async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColor, resultBS) {
   try {
@@ -120,22 +120,21 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
     
     for (let bet of currentBets) {
       let userId = bet.uid;
-      let betIndex = bet.betIndex; // ဘယ်နှစ်ခုမြောက်ထိုးထားလဲဆိုတဲ့ အမှတ်အသား
+      let betIndex = bet.betIndex;
       let amount = parseFloat(bet.amount || 0);
       let choice = String(bet.choice || '').trim().toUpperCase();
       let isWin = false;
 
       if (choice === resultBS) {
-        isWin = true; // BIG or SMALL (1.95x)
+        isWin = true; 
       } else if (choice === resultColor) {
-        isWin = true; // GREEN, VIOLET (1.95x)
+        isWin = true; 
       } else if (choice === String(winningNumber)) {
-        isWin = true; // ဂဏန်း အတိအကျ 0 - 9 (9x)
+        isWin = true; 
       }
 
       bet.status = isWin ? 'Win' : 'Lose';
 
-      // User ရဲ့ My History ထဲတွင် Round နှင့် Bet Index တူသည်ကို ရှာပြီး Status ပြောင်းပေးမည်
       if (userBetsHistory[userId]) {
         let uBet = userBetsHistory[userId].find(b => b.round === roundNumber && b.gameType === gameType && b.betIndex === betIndex);
         if (uBet) uBet.status = bet.status;
@@ -151,7 +150,6 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
             if (isNaN(val)) val = 0;
             return val + winAmount;
           });
-          console.log(`[WIN SUCCESS] User ${userId} (Bet #${betIndex}) received +${winAmount} MMK`);
         }
       }
     }
@@ -187,6 +185,17 @@ app.post('/api/place-bet', async (req, res) => {
   if (!uid || !choice || !amount) {
     return res.status(400).json({ success: false, message: "အချက်အလက် မစုံလင်ပါ!" });
   }
+
+  // --- နောက်ဆုံး ၆ စက္ကန့်အလို (Timer <= 6) တွင် Bet ထိုးခွင့်ပိတ်ခြင်း ---
+  const interval = type === '30s' ? 30 : 60;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const currentRound = Math.floor(nowSec / interval);
+  const timer = interval - (nowSec % interval);
+
+  if (timer <= 6) {
+    return res.status(400).json({ success: false, message: "အချိန်ကုန်သွားပါပြီ။ ဤ Round အတွက် ထိုးကြေးလက်မခံတော့ပါ။" });
+  }
+  // -----------------------------------------------------------------
   
   const betAmount = parseFloat(amount);
   if (isNaN(betAmount) || betAmount <= 0) {
@@ -213,21 +222,15 @@ app.post('/api/place-bet', async (req, res) => {
       if (isNaN(val)) val = 0;
       return val - betAmount;
     });
-    console.log(`[BET SUCCESS] User ${uid} deducted -${betAmount} MMK`);
   }
 
-  const interval = type === '30s' ? 30 : 60;
-  const nowSec = Math.floor(Date.now() / 1000);
-  const currentRound = Math.floor(nowSec / interval);
-
-  // User တစ်ဦးချင်းစီအတွက် လက်ရှိ Round မှာ ဘယ်နှခုမြောက် Bet ထိုးတာလဲဆိုတာကို ရေတွက်ရန်
   if (!userBetsHistory[uid]) userBetsHistory[uid] = [];
   let existingRoundBetsCount = userBetsHistory[uid].filter(b => b.round === currentRound && b.gameType === type).length;
-  let betIndex = existingRoundBetsCount + 1; // ဥပမာ - 1, 2, 3 အစရှိသဖြင့်
+  let betIndex = existingRoundBetsCount + 1;
   
   const betData = { 
     round: currentRound, 
-    betIndex: betIndex, // Bet တစ်ခုချင်းစီအတွက် အမှတ်စဉ် (1, 2, 3...)
+    betIndex: betIndex, 
     playerName: playerName, 
     choice: String(choice).trim().toUpperCase(), 
     amount: betAmount, 
@@ -259,7 +262,6 @@ app.get('/api/admin/get-data', (req, res) => {
     const c = b.choice.toUpperCase();
     if (totals[c] !== undefined) totals[c] += b.amount;
 
-    // Admin ဘက်မှာလည်း ဘယ်နှခုမြောက် Bet လဲဆိုတာ (ဥပမာ Name #1) ပေါ်အောင် ပြသမည်
     formattedBets.push({
       playerName: `${b.playerName} #${b.betIndex}`, 
       choice: b.choice,
