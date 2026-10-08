@@ -60,7 +60,6 @@
     <script>
         let currentGameType = '30s';
 
-        // Page စဖွင့်ချင်း LocalStorage ထဲမှာ Token ရှိမရှိ စစ်ဆေးမည်
         window.onload = function() {
             const savedToken = localStorage.getItem('admin_token');
             if (savedToken) {
@@ -90,13 +89,11 @@
                 return res.json();
             })
             .then(data => {
-                // မှန်ကန်ပါက Token ကို သိမ်းဆည်းပြီး Dashboard ကို ပြမည်
                 localStorage.setItem('admin_token', token);
                 document.getElementById('loginSection').classList.add('hidden');
                 document.getElementById('adminDashboard').classList.remove('hidden');
                 renderDashboard(data);
 
-                // ၁ စက္ကန့်တစ်ကြိမ် Data အလိုအလျောက် ဆွဲထုတ်ရန်
                 setInterval(() => refreshData(token), 2000);
             })
             .catch(err => {
