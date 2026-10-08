@@ -32,7 +32,7 @@
     <div id="adminDashboard" class="container hidden">
         <h2>🎮 Game Admin Dashboard</h2>
         <p>Status: <span id="serverTimer" style="font-weight: bold; color: green;">Loading...</span></p>
-
+        
         <hr>
         <h3>Active Bets (လက်ရှိထိုးကြေးများ)</h3>
         <div style="margin-bottom: 10px;">
@@ -60,58 +60,41 @@
     <script>
         let currentGameType = '30s';
         let refreshTimer;
-        let currentAdminPwd = ''; // Password ကို သိမ်းထားရန်
+        let currentAdminPwd = ''; // Password ကို သိမ်းဆည်းရန်
 
-        // သတိပြုရန်: Frontend ထဲတွင် password ထည့်ထားသောကြောင့် source code ကို မြင်နိုင်သူများက သိနိုင်ပါသည်။
-        const ADMIN_PASSWORD = 'Peter125199';
-
+        // ဝင်မည် ခလုတ်နှိပ်သည့်အခါ
         function doLogin() {
             const pwd = document.getElementById('adminPasswordInput').value;
-
             if (!pwd) {
                 alert('Password ထည့်ပါခင်ဗျာ။');
                 return;
             }
 
-            // အပြင်မှရိုက်ထည့်သော password နှင့် code ထဲက password တူ/မတူ စစ်သည်
-            if (pwd !== ADMIN_PASSWORD) {
-                alert('Password မှားယွင်းနေပါသည်။');
-                return;
-            }
-
-            // Password ကို သိမ်းထားမည်
-            currentAdminPwd = pwd;
-
-            // Password မှန်ကန်ပါက Dashboard ကိုဖွင့်သည်
-            document.getElementById('loginSection').classList.add('hidden');
-            document.getElementById('adminDashboard').classList.remove('hidden');
-
-            loadDashboard();
-        }
-
-        function loadDashboard() {
+            // Server ဆီသို့ API ဖြင့် တိုက်ရိုက် စစ်ဆေးရန် ပို့မည်
             fetch(`/api/admin/get-data?gameType=${currentGameType}`, {
-                headers: { 'x-admin-token': currentAdminPwd }
+                headers: {
+                    'x-admin-token': pwd
+                }
             })
             .then(res => {
-                if (!res.ok) throw new Error('ဒေတာ ရယူ၍ မရပါ။');
+                if (!res.ok) {
+                    throw new Error('Password မှားယွင်းနေပါသည်။');
+                }
                 return res.json();
             })
             .then(data => {
+                // မှန်ကန်ပါက Password ကို သိမ်းဆည်းမည်
+                currentAdminPwd = pwd;
+
+                // Login မျက်နှာပြင်ကိုဖျောက်၍ Dashboard ပြမည်
+                document.getElementById('loginSection').classList.add('hidden');
+                document.getElementById('adminDashboard').classList.remove('hidden');
                 renderDashboard(data);
 
-                // Login အောင်မြင်ပြီးနောက် (သို့မဟုတ် Game ပြောင်းပြီးနောက်) ၂ စက္ကန့်တစ်ကြိမ် ဒေတာအသစ် ရယူသည်
+                // ၂ စက္ကန့်တစ်ကြိမ် ဒေတာအသစ် ဆွဲထုတ်ရန်
                 clearInterval(refreshTimer);
                 refreshTimer = setInterval(() => {
-                    fetch(`/api/admin/get-data?gameType=${currentGameType}`, {
-                        headers: { 'x-admin-token': currentAdminPwd }
-                    })
-                    .then(r => {
-                        if (!r.ok) throw new Error('ဒေတာ ရယူ၍ မရပါ။');
-                        return r.json();
-                    })
-                    .then(renderDashboard)
-                    .catch(err => console.log(err));
+                    fetchData();
                 }, 2000);
             })
             .catch(err => {
@@ -119,20 +102,34 @@
             });
         }
 
-        function renderDashboard(data) {
-            document.getElementById('serverTimer').innerText =
-                `Round: ${data.round} | Timer: ${data.timer}s | Forced: ${data.forced}`;
+        // ဒေတာလှမ်းဆွဲသည့် သီးသန့် Function
+        function fetchData() {
+            if (!currentAdminPwd) return;
 
-            const tbody = document.getElementById('betsTableBody');
+            fetch(`/api/admin/get-data?gameType=${currentGameType}`, {
+                headers: { 'x-admin-token': currentAdminPwd }
+            })
+            .then(r => {
+                if (!r.ok) throw new Error('ဒေတာ ရယူ၍ မရပါ။');
+                return r.json();
+            })
+            .then(d => renderDashboard(d))
+            .catch(e => console.log(e));
+        }
+
+        function renderDashboard(data) {
+            document.getElementById('serverTimer').innerText = `Round: ${data.round} | Timer: ${data.timer}s | Forced: ${data.forced}`;
+            
+            let tbody = document.getElementById('betsTableBody');
             tbody.innerHTML = '';
 
             if (!data.bets || data.bets.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5">လက်ရှိ ထိုးကြေး မရှိသေးပါ။</td></tr>';
+                tbody.innerHTML = `<tr><td colspan="5">လက်ရှိ ထိုးကြေး မရှိသေးပါ။</td></tr>`;
                 return;
             }
 
             data.bets.forEach(b => {
-                const tr = document.createElement('tr');
+                let tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${b.round}</td>
                     <td>${b.playerName}</td>
@@ -148,10 +145,8 @@
             currentGameType = type;
             document.getElementById('currentGameLabel').innerText = `Current: ${type}`;
             
-            // Game ပြောင်းလိုက်တာနဲ့ ဒေတာအသစ်ချက်ချင်း ဝင်လာအောင် လုပ်ဆောင်ပေးခြင်း
-            if (currentAdminPwd) {
-                loadDashboard();
-            }
+            // Game ပြောင်းလိုက်သည်နှင့် သက်ဆိုင်ရာ Game အမျိုးအစားအလိုက် ဒေတာအသစ် ချက်ချင်းဆွဲမည်
+            fetchData();
         }
     </script>
 </body>
