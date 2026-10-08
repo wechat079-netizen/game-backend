@@ -11,11 +11,11 @@ const io = new Server(server);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Firebase Initialization (သင့်ရဲ့ Firebase config အတိုင်း ထည့်ပါ)
+// Firebase Initialization (သင့်ရဲ့ serviceAccountKey.json ဖြင့်ချိတ်ဆက်ရန်)
 /*
 admin.initializeApp({
   credential: admin.credential.cert(require('./serviceAccountKey.json')),
-  databaseURL: "YOUR_DATABASE_URL"
+  databaseURL: "https://right-2c598-default-rtdb.firebaseio.com/"
 });
 */
 
@@ -144,7 +144,7 @@ app.post('/api/admin/set-result', (req, res) => {
     res.status(400).json({ success: false, message: "အချက်အလက် မှားယွင်းနေပါသည်။" });
 });
 
-// Socket connection ( საჭරိုးပါက အသုံးပြုရန် )
+// Socket connection
 io.on('connection', (socket) => {
     console.log('A user connected');
 });
