@@ -13,7 +13,7 @@
         .tab-btn.active { background: #00e5ff; color: #000; }
         .info-box { background: #11141d; padding: 15px; border-radius: 8px; border-left: 4px solid #00e5ff; margin-bottom: 20px; }
         
-        /* Total Bets Grid UI (RED မပါတော့ပါ) */
+        /* Total Bets Grid UI */
         .total-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; }
         .total-box { padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; }
         .bg-big { background: #c62828; }
@@ -76,7 +76,7 @@
         <table>
             <thead>
                 <tr>
-                    <th>User ID</th>
+                    <th>Player Name</th>
                     <th>Choice</th>
                     <th>Amount</th>
                 </tr>
@@ -89,6 +89,7 @@
 
     <script>
         let currentGame = '30s';
+        const adminToken = "admin12345"; // Backend တွင် သတ်မှတ်ထားသော Secret Key
 
         function switchGame(type) {
             currentGame = type;
@@ -106,7 +107,15 @@
 
         async function fetchAdminData() {
             try {
-                const res = await fetch(`/api/admin/get-data?gameType=${currentGame}`);
+                const res = await fetch(`/api/admin/get-data?gameType=${currentGame}`, {
+                    headers: { 'x-admin-token': adminToken }
+                });
+                
+                if (!res.ok) {
+                    console.log("Unauthorized or Network Error");
+                    return;
+                }
+
                 const data = await res.json();
                 
                 document.getElementById('roundNo').innerText = data.round || '--';
@@ -124,7 +133,7 @@
                 if (data.bets && data.bets.length > 0) {
                     tableBody.innerHTML = data.bets.map(bet => `
                         <tr>
-                            <td>${bet.uid.substring(0, 6)}...</td>
+                            <td>${bet.playerName}</td>
                             <td style="color: #00e5ff; font-weight: bold;">${bet.choice}</td>
                             <td style="color: #4caf50;">${bet.amount.toLocaleString()} MMK</td>
                         </tr>
@@ -142,7 +151,10 @@
         async function setChoiceResult(choice) {
             const res = await fetch('/api/admin/set-result', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-admin-token': adminToken
+                },
                 body: JSON.stringify({ gameType: currentGame, choice: choice })
             });
             const data = await res.json();
@@ -156,7 +168,10 @@
 
             const res = await fetch('/api/admin/set-result', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-admin-token': adminToken
+                },
                 body: JSON.stringify({ gameType: currentGame, number: parseInt(num) })
             });
             const data = await res.json();
