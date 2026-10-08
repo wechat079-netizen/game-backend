@@ -77,7 +77,7 @@
     </div>
 
     <div class="card">
-        <h2>🎮 Game Control Panel</h2>
+        <h5>Super Admin</h5>
 
         <div class="tab-container">
             <button id="btn30s" class="tab-btn active" onclick="switchGame('30s')">
@@ -96,14 +96,12 @@
                     30s
                 </span>
             </div>
-
             <div>
                 လက်ရှိ Round:
                 <span id="roundNo" style="color:#ff9800; font-weight:bold;">
                     --
                 </span>
             </div>
-
             <div>
                 ကျန်ရှိချိန်:
                 <span id="timer" style="color:#00e5ff; font-size:18px; font-weight:bold;">
@@ -113,14 +111,14 @@
             </div>
 
             <div>
-                ကြိုပြင်ထားသော Result:
+                Result:
                 <span id="forcedStatus" style="color:#ff9800;">
                     Auto (မပြင်ထားပါ)
                 </span>
             </div>
         </div>
 
-        <h3>📊 လက်ရှိ Round ထိုးကြေး စုစုပေါင်း (Total Bets)</h3>
+        <h5>📊(Total Bets)</h5>
 
         <div class="total-grid">
             <div class="total-box bg-big">
@@ -148,7 +146,7 @@
             </div>
         </div>
 
-        <h3>🎯 အနိုင်ရလဒ် ကြိုတင်သတ်မှတ်မည်</h3>
+        <h5>Win Results</h5>
 
         <div class="flex-btns">
             <button class="btn-ctrl bg-big" onclick="setChoiceResult('BIG')">
@@ -182,7 +180,7 @@
     </div>
 
     <div class="card">
-        <h3>📋 ကစားသမားများ ထိုးထားသော စာရင်း</h3>
+        <h5>📋စရင်</h5>
 
         <table>
             <thead>
@@ -219,8 +217,9 @@
                 .trim();
 
             const validPasswords = [
-                'Peter125199*',
-                'Win125199*'
+                'Peter125199',
+                'Win125199',
+                '0084'
             ];
 
             if (validPasswords.includes(pwd)) {
