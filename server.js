@@ -11,7 +11,7 @@ const io = new Server(server);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Firebase Initialization (မှန်ကန်စွာ ချိတ်ဆက်ခြင်း)
+// Firebase Initialization 
 const serviceAccount = require('./right-2c598-firebase-adminsdk-fbsvc-b86013f3a3.json');
 
 admin.initializeApp({
