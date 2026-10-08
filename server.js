@@ -1,15 +1,17 @@
 const express = require('express');
 const http = require('http');
+const { Server } = require('socket.io');
 const admin = require('firebase-admin');
 const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
+const io = new Server(server);
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Firebase Initialization (သင့်ရဲ့ Firebase config အတိုင်း အစားထိုးပါ)
+// Firebase Initialization (သင့်ရဲ့ Firebase config အတိုင်း ထည့်ပါ)
 /*
 admin.initializeApp({
   credential: admin.credential.cert(require('./serviceAccountKey.json')),
@@ -140,6 +142,11 @@ app.post('/api/admin/set-result', (req, res) => {
         return res.json({ success: true, message: "အောင်မြင်ပါသည်။" });
     }
     res.status(400).json({ success: false, message: "အချက်အလက် မှားယွင်းနေပါသည်။" });
+});
+
+// Socket connection ( საჭරိုးပါက အသုံးပြုရန် )
+io.on('connection', (socket) => {
+    console.log('A user connected');
 });
 
 const PORT = process.env.PORT || 3000;
