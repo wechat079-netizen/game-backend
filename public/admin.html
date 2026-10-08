@@ -16,7 +16,12 @@
         th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 14px; }
         th { background: #007bff; color: white; }
         .btn { padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
-      <div id="loginSection" class="login-box">
+    </style>
+</head>
+<body>
+
+    <!-- Login Section -->
+    <div id="loginSection" class="login-box">
         <h3>🔐 Admin Login</h3>
         <p>Password ထည့်ပါ</p>
         <input type="password" id="adminPasswordInput" placeholder="Admin125199*">
@@ -59,14 +64,13 @@
         function simpleLogin() {
             const pwd = document.getElementById('adminPasswordInput').value;
             
-            // Front-end ဘက်ကနေ တိုက်ရိုက် စစ်ဆေးမည် (အလွယ်ဆုံးပုံစံ)
             if (pwd === "Admin125199*") {
                 globalPassword = pwd;
                 document.getElementById('loginSection').classList.add('hidden');
                 document.getElementById('adminDashboard').classList.remove('hidden');
                 
                 fetchData();
-                setInterval(fetchData, 2000); // ၂ စက္ကန့်တစ်ကြိမ် ဒေတာဆွဲမည်
+                setInterval(fetchData, 2000);
             } else {
                 alert('Password မှားယွင်းနေပါသည်။');
             }
