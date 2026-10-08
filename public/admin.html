@@ -9,10 +9,8 @@
         .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         h2 { color: #333; }
         .login-box { text-align: center; margin-top: 100px; }
-        .input-group { position: relative; display: inline-block; }
-        .login-box input { padding: 10px; font-size: 16px; width: 230px; border: 1px solid #ccc; border-radius: 4px; padding-right: 40px; }
-        .toggle-btn { position: absolute; right: 10px; top: 12px; cursor: pointer; font-size: 14px; color: #555; background: none; border: none; }
-        .login-box button.submit-btn { padding: 10px 20px; font-size: 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; display: block; width: 250px; margin-left: auto; margin-right: auto; }
+        .login-box input { padding: 10px; font-size: 16px; width: 250px; border: 1px solid #ccc; border-radius: 4px; }
+        .login-box button { padding: 10px 20px; font-size: 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; display: block; margin-left: auto; margin-right: auto; }
         .hidden { display: none !important; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 14px; }
@@ -26,11 +24,8 @@
     <div id="loginSection" class="login-box">
         <h3>🔐 Admin Login</h3>
         <p>Admin Password ထည့်ပါ</p>
-        <div class="input-group">
-            <input type="password" id="adminPasswordInput" placeholder="Password ထည့်ရန်...">
-            <button type="button" class="toggle-btn" onclick="togglePassword()">👁️</button>
-        </div>
-        <button class="submit-btn" onclick="loginAdmin()">ဝင်မည်</button>
+        <input type="password" id="adminPasswordInput" placeholder="Password ထည့်ရန်...">
+        <button onclick="doLogin()">ဝင်မည်</button>
     </div>
 
     <!-- Admin Dashboard Section -->
@@ -63,100 +58,77 @@
     </div>
 
     <script>
-    let currentGameType = '30s';
+        let currentGameType = '30s';
 
-    // Page စဖွင့်ချင်း Token ရှိမရှိ စစ်ဆေးမည်
-    window.onload = function() {
-        const savedToken = localStorage.getItem('admin_token');
-        if (savedToken) {
-            loadDashboard(savedToken);
-        }
-    };
-
-    // Password မြင်ရ/မမြင်ရ ပြောင်းရန်
-    function togglePassword() {
-        const pwdInput = document.getElementById('adminPasswordInput');
-        pwdInput.type = pwdInput.type === 'password' ? 'text' : 'password';
-    }
-
-    // ဝင်မည်ခလုတ်နှိပ်သောအခါ
-    function loginAdmin() {
-        const pwd = document.getElementById('adminPasswordInput').value;
-        if (!pwd) {
-            alert('ကျေးဇူးပြု၍ Password ထည့်ပါ။');
-            return;
-        }
-        loadDashboard(pwd);
-    }
-
-    function loadDashboard(token) {
-        fetch(`/api/admin/get-data?gameType=${currentGameType}`, {
-            headers: {
-                'x-admin-token': token
+        // ဝင်မည် ခလုတ်နှိပ်သည့်အခါ
+        function doLogin() {
+            const pwd = document.getElementById('adminPasswordInput').value;
+            if (!pwd) {
+                alert('Password ထည့်ပါခင်ဗျာ။');
+                return;
             }
-        })
-        .then(res => {
-            if (!res.ok) {
-                throw new Error('Password မှားယွင်းနေပါသည် သို့မဟုတ် ဆာဗာချိတ်ဆက်မှု မအောင်မြင်ပါ။');
-            }
-            return res.json();
-        })
-        .then(data => {
-            localStorage.setItem('admin_token', token);
-            document.getElementById('loginSection').classList.add('hidden');
-            document.getElementById('adminDashboard').classList.remove('hidden');
-            renderDashboard(data);
 
-            // ၂ စက္ကန့်တစ်ကြိမ် ဒေတာ အသစ်ဆွဲထုတ်ရန်
-            setInterval(() => refreshData(token), 2000);
-        })
-        .catch(err => {
-            alert(err.message);
-            localStorage.removeItem('admin_token');
-        });
-    }
+            // Server ဆီသို့ API ဖြင့် တိုက်ရိုက် စစ်ဆေးရန် ပို့မည်
+            fetch(`/api/admin/get-data?gameType=${currentGameType}`, {
+                headers: {
+                    'x-admin-token': pwd
+                }
+            })
+            .then(res => {
+                if (!res.ok) {
+                    throw new Error('Password မှားယွင်းနေပါသည်။');
+                }
+                return res.json();
+            })
+            .then(data => {
+                // မှန်ကန်ပါက Login မျက်နှာပြင်ကိုဖျောက်၍ Dashboard ပြမည်
+                document.getElementById('loginSection').classList.add('hidden');
+                document.getElementById('adminDashboard').classList.remove('hidden');
+                renderDashboard(data);
 
-    function refreshData(token) {
-        fetch(`/api/admin/get-data?gameType=${currentGameType}`, {
-            headers: { 'x-admin-token': token }
-        })
-        .then(res => res.json())
-        .then(data => {
-            renderDashboard(data);
-        }).catch(e => console.log(e));
-    }
-
-    function renderDashboard(data) {
-        document.getElementById('serverTimer').innerText = `Round: ${data.round} | Timer: ${data.timer}s | Forced: ${data.forced}`;
-        
-        let tbody = document.getElementById('betsTableBody');
-        tbody.innerHTML = '';
-
-        if (!data.bets || data.bets.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5">လက်ရှိ ထိုးကြေး မရှိသေးပါ။</td></tr>`;
-            return;
+                // ၂ စက္ကန့်တစ်ကြိမ် ဒေတာအသစ် ဆွဲထုတ်ရန်
+                setInterval(() => {
+                    fetch(`/api/admin/get-data?gameType=${currentGameType}`, {
+                        headers: { 'x-admin-token': pwd }
+                    })
+                    .then(r => r.json())
+                    .then(d => renderDashboard(d))
+                    .catch(e => console.log(e));
+                }, 2000);
+            })
+            .catch(err => {
+                alert(err.message);
+            });
         }
 
-        data.bets.forEach(b => {
-            let tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${b.round}</td>
-                <td>${b.playerName}</td>
-                <td><b>${b.choice}</b></td>
-                <td>${b.amount}</td>
-                <td>${b.status}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-    }
+        function renderDashboard(data) {
+            document.getElementById('serverTimer').innerText = `Round: ${data.round} | Timer: ${data.timer}s | Forced: ${data.forced}`;
+            
+            let tbody = document.getElementById('betsTableBody');
+            tbody.innerHTML = '';
 
-    function switchGame(type) {
-        currentGameType = type;
-        document.getElementById('currentGameLabel').innerText = `Current: ${type}`;
-        const token = localStorage.getItem('admin_token');
-        if (token) refreshData(token);
-    }
-</script>
+            if (!data.bets || data.bets.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5">လက်ရှိ ထိုးကြေး မရှိသေးပါ။</td></tr>`;
+                return;
+            }
 
+            data.bets.forEach(b => {
+                let tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${b.round}</td>
+                    <td>${b.playerName}</td>
+                    <td><b>${b.choice}</b></td>
+                    <td>${b.amount}</td>
+                    <td>${b.status}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function switchGame(type) {
+            currentGameType = type;
+            document.getElementById('currentGameLabel').innerText = `Current: ${type}`;
+        }
+    </script>
 </body>
 </html>
