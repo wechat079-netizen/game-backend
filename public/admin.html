@@ -63,100 +63,100 @@
     </div>
 
     <script>
-        let currentGameType = '30s';
+    let currentGameType = '30s';
 
-        // Password ကို မြင်ရ/မမြင်ရ ပြောင်းပေးသော Function
-        function togglePassword() {
-            const pwdInput = document.getElementById('adminPasswordInput');
-            if (pwdInput.type === 'password') {
-                pwdInput.type = 'text';
-            } else {
-                pwdInput.type = 'password';
+    // Page စဖွင့်ချင်း Token ရှိမရှိ စစ်ဆေးမည်
+    window.onload = function() {
+        const savedToken = localStorage.getItem('admin_token');
+        if (savedToken) {
+            loadDashboard(savedToken);
+        }
+    };
+
+    // Password မြင်ရ/မမြင်ရ ပြောင်းရန်
+    function togglePassword() {
+        const pwdInput = document.getElementById('adminPasswordInput');
+        pwdInput.type = pwdInput.type === 'password' ? 'text' : 'password';
+    }
+
+    // ဝင်မည်ခလုတ်နှိပ်သောအခါ
+    function loginAdmin() {
+        const pwd = document.getElementById('adminPasswordInput').value;
+        if (!pwd) {
+            alert('ကျေးဇူးပြု၍ Password ထည့်ပါ။');
+            return;
+        }
+        loadDashboard(pwd);
+    }
+
+    function loadDashboard(token) {
+        fetch(`/api/admin/get-data?gameType=${currentGameType}`, {
+            headers: {
+                'x-admin-token': token
             }
-        }
-
-        window.onload = function() {
-            const savedToken = localStorage.getItem('admin_token');
-            if (savedToken) {
-                verifyAndLoadData(savedToken);
+        })
+        .then(res => {
+            if (!res.ok) {
+                throw new Error('Password မှားယွင်းနေပါသည် သို့မဟုတ် ဆာဗာချိတ်ဆက်မှု မအောင်မြင်ပါ။');
             }
-        };
+            return res.json();
+        })
+        .then(data => {
+            localStorage.setItem('admin_token', token);
+            document.getElementById('loginSection').classList.add('hidden');
+            document.getElementById('adminDashboard').classList.remove('hidden');
+            renderDashboard(data);
 
-        function loginAdmin() {
-            const pwd = document.getElementById('adminPasswordInput').value;
-            if (!pwd) {
-                alert('Password ထည့်ပါ။');
-                return;
-            }
-            verifyAndLoadData(pwd);
+            // ၂ စက္ကန့်တစ်ကြိမ် ဒေတာ အသစ်ဆွဲထုတ်ရန်
+            setInterval(() => refreshData(token), 2000);
+        })
+        .catch(err => {
+            alert(err.message);
+            localStorage.removeItem('admin_token');
+        });
+    }
+
+    function refreshData(token) {
+        fetch(`/api/admin/get-data?gameType=${currentGameType}`, {
+            headers: { 'x-admin-token': token }
+        })
+        .then(res => res.json())
+        .then(data => {
+            renderDashboard(data);
+        }).catch(e => console.log(e));
+    }
+
+    function renderDashboard(data) {
+        document.getElementById('serverTimer').innerText = `Round: ${data.round} | Timer: ${data.timer}s | Forced: ${data.forced}`;
+        
+        let tbody = document.getElementById('betsTableBody');
+        tbody.innerHTML = '';
+
+        if (!data.bets || data.bets.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5">လက်ရှိ ထိုးကြေး မရှိသေးပါ။</td></tr>`;
+            return;
         }
 
-        function verifyAndLoadData(token) {
-            fetch(`/api/admin/get-data?gameType=${currentGameType}`, {
-                headers: {
-                    'x-admin-token': token
-                }
-            })
-            .then(res => {
-                if (res.status === 403) {
-                    throw new Error('Password မှားယွင်းနေပါသည်။');
-                }
-                return res.json();
-            })
-            .then(data => {
-                localStorage.setItem('admin_token', token);
-                document.getElementById('loginSection').classList.add('hidden');
-                document.getElementById('adminDashboard').classList.remove('hidden');
-                renderDashboard(data);
+        data.bets.forEach(b => {
+            let tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${b.round}</td>
+                <td>${b.playerName}</td>
+                <td><b>${b.choice}</b></td>
+                <td>${b.amount}</td>
+                <td>${b.status}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
 
-                setInterval(() => refreshData(token), 2000);
-            })
-            .catch(err => {
-                alert(err.message);
-                localStorage.removeItem('admin_token');
-            });
-        }
+    function switchGame(type) {
+        currentGameType = type;
+        document.getElementById('currentGameLabel').innerText = `Current: ${type}`;
+        const token = localStorage.getItem('admin_token');
+        if (token) refreshData(token);
+    }
+</script>
 
-        function refreshData(token) {
-            fetch(`/api/admin/get-data?gameType=${currentGameType}`, {
-                headers: { 'x-admin-token': token }
-            })
-            .then(res => res.json())
-            .then(data => {
-                renderDashboard(data);
-            }).catch(e => console.log(e));
-        }
-
-        function renderDashboard(data) {
-            document.getElementById('serverTimer').innerText = `Round: ${data.round} | Timer: ${data.timer}s | Forced: ${data.forced}`;
-            
-            let tbody = document.getElementById('betsTableBody');
-            tbody.innerHTML = '';
-
-            if (!data.bets || data.bets.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5">လက်ရှိ ထိုးကြေး မရှိသေးပါ။</td></tr>`;
-                return;
-            }
-
-            data.bets.forEach(b => {
-                let tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${b.round}</td>
-                    <td>${b.playerName}</td>
-                    <td><b>${b.choice}</b></td>
-                    <td>${b.amount}</td>
-                    <td>${b.status}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-
-        function switchGame(type) {
-            currentGameType = type;
-            document.getElementById('currentGameLabel').innerText = `Current: ${type}`;
-            const token = localStorage.getItem('admin_token');
-            if (token) refreshData(token);
-        }
-    </script>
 </body>
 </html>
