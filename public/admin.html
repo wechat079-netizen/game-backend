@@ -60,6 +60,7 @@
     <script>
         let currentGameType = '30s';
         let refreshTimer;
+        let currentAdminPwd = ''; // Password ကို သိမ်းထားရန်
 
         // သတိပြုရန်: Frontend ထဲတွင် password ထည့်ထားသောကြောင့် source code ကို မြင်နိုင်သူများက သိနိုင်ပါသည်။
         const ADMIN_PASSWORD = 'Peter125199';
@@ -78,16 +79,19 @@
                 return;
             }
 
+            // Password ကို သိမ်းထားမည်
+            currentAdminPwd = pwd;
+
             // Password မှန်ကန်ပါက Dashboard ကိုဖွင့်သည်
             document.getElementById('loginSection').classList.add('hidden');
             document.getElementById('adminDashboard').classList.remove('hidden');
 
-            loadDashboard(pwd);
+            loadDashboard();
         }
 
-        function loadDashboard(pwd) {
+        function loadDashboard() {
             fetch(`/api/admin/get-data?gameType=${currentGameType}`, {
-                headers: { 'x-admin-token': pwd }
+                headers: { 'x-admin-token': currentAdminPwd }
             })
             .then(res => {
                 if (!res.ok) throw new Error('ဒေတာ ရယူ၍ မရပါ။');
@@ -96,11 +100,11 @@
             .then(data => {
                 renderDashboard(data);
 
-                // Login အောင်မြင်ပြီးနောက် ၂ စက္ကန့်တစ်ကြိမ် ဒေတာအသစ် ရယူသည်
+                // Login အောင်မြင်ပြီးနောက် (သို့မဟုတ် Game ပြောင်းပြီးနောက်) ၂ စက္ကန့်တစ်ကြိမ် ဒေတာအသစ် ရယူသည်
                 clearInterval(refreshTimer);
                 refreshTimer = setInterval(() => {
                     fetch(`/api/admin/get-data?gameType=${currentGameType}`, {
-                        headers: { 'x-admin-token': pwd }
+                        headers: { 'x-admin-token': currentAdminPwd }
                     })
                     .then(r => {
                         if (!r.ok) throw new Error('ဒေတာ ရယူ၍ မရပါ။');
@@ -143,6 +147,11 @@
         function switchGame(type) {
             currentGameType = type;
             document.getElementById('currentGameLabel').innerText = `Current: ${type}`;
+            
+            // Game ပြောင်းလိုက်တာနဲ့ ဒေတာအသစ်ချက်ချင်း ဝင်လာအောင် လုပ်ဆောင်ပေးခြင်း
+            if (currentAdminPwd) {
+                loadDashboard();
+            }
         }
     </script>
 </body>
