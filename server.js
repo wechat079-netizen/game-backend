@@ -14,7 +14,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Firebase Initialization (သင့်ရဲ့ serviceAccountKey.json ဖြင့်ချိတ်ဆက်ရန်)
 /*
 admin.initializeApp({
-  credential: admin.credential.cert(require('./serviceAccountKey.json')),
+  credential: admin.credential.cert(require('./right-2c598-firebase-adminsdk-fbsvc-b86013f3a3.json')),
   databaseURL: "https://right-2c598-default-rtdb.firebaseio.com/"
 });
 */
