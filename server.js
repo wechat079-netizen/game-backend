@@ -71,7 +71,6 @@ function startGameEngine(gameType) {
           }
         });
 
-        // Bet အနည်းဆုံး Choice ကို ရွေးချယ်မည် (BIG နှင့် SMALL ကို ဦးစားပေးနှိုင်းယှဉ်မည်)
         let chosenChoice = totals.BIG <= totals.SMALL ? "BIG" : "SMALL";
 
         if (chosenChoice === "BIG") {
@@ -81,8 +80,7 @@ function startGameEngine(gameType) {
         }
       }
 
-      // Color & BS တွက်ချက်ခြင်း (အနီရောင် မပါဝင်ပါ - GREEN နှင့် VIOLET သာ)
-      // ဥပမာ - ဂဏန်းစုံ (0,2,4,6,8) သည် GREEN၊ ဂဏန်းမ (1,3,5,7,9) သည် VIOLET (ပုံအရ သတ်မှတ်ချက်)
+      // Color & BS တွက်ချက်ခြင်း
       if (winningNumber % 2 === 0) {
         resultColor = "GREEN";
       } else {
@@ -96,7 +94,7 @@ function startGameEngine(gameType) {
       gameHistory[gameType].unshift(historyItem);
       if (gameHistory[gameType].length > 30) gameHistory[gameType].pop();
 
-      // Bet တင်ထားသူများကို ငွေရှင်းပေးခြင်း
+      // Bet တင်ထားသူများကို ငွေရှင်းပေးခြင်း (တစ်ခုချင်းစီ သီးသန့် စစ်ဆေးမည်)
       await settleBetsEngine(gameType, currentRound, winningNumber, resultColor, resultBS);
 
       // Round ပြီးသွားပါက Memory Clear ပြုလုပ်ခြင်း
@@ -111,7 +109,7 @@ startGameEngine('30s');
 startGameEngine('60s');
 
 // -------------------------------------------------------------
-// Settle Bets Engine (နိုင်သူများကို ငွေပြန်ပေါင်းပေးမည့် Logic)
+// Settle Bets Engine (Bet တစ်ခုချင်းစီကို သီးသန့် Win/Lose တွက်ပေးခြင်း)
 // -------------------------------------------------------------
 async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColor, resultBS) {
   try {
@@ -122,6 +120,7 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
     
     for (let bet of currentBets) {
       let userId = bet.uid;
+      let betIndex = bet.betIndex; // ဘယ်နှစ်ခုမြောက်ထိုးထားလဲဆိုတဲ့ အမှတ်အသား
       let amount = parseFloat(bet.amount || 0);
       let choice = String(bet.choice || '').trim().toUpperCase();
       let isWin = false;
@@ -136,8 +135,9 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
 
       bet.status = isWin ? 'Win' : 'Lose';
 
+      // User ရဲ့ My History ထဲတွင် Round နှင့် Bet Index တူသည်ကို ရှာပြီး Status ပြောင်းပေးမည်
       if (userBetsHistory[userId]) {
-        let uBet = userBetsHistory[userId].find(b => b.round === roundNumber && b.gameType === gameType);
+        let uBet = userBetsHistory[userId].find(b => b.round === roundNumber && b.gameType === gameType && b.betIndex === betIndex);
         if (uBet) uBet.status = bet.status;
       }
 
@@ -151,7 +151,7 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
             if (isNaN(val)) val = 0;
             return val + winAmount;
           });
-          console.log(`[WIN SUCCESS] User ${userId} received +${winAmount} MMK`);
+          console.log(`[WIN SUCCESS] User ${userId} (Bet #${betIndex}) received +${winAmount} MMK`);
         }
       }
     }
@@ -181,7 +181,7 @@ app.get('/api/user/get-data', (req, res) => {
 });
 
 app.post('/api/place-bet', async (req, res) => {
-  const { uid, choice, amount, gameType } = req.body;
+  const { uid, name, choice, amount, gameType } = req.body;
   const type = gameType || '30s';
 
   if (!uid || !choice || !amount) {
@@ -192,6 +192,19 @@ app.post('/api/place-bet', async (req, res) => {
   if (isNaN(betAmount) || betAmount <= 0) {
     return res.status(400).json({ success: false, message: "ထိုးငွေ ပမာဏ မမှန်ကန်ပါ!" });
   }
+
+  let playerName = name;
+  if (!playerName && admin.apps.length > 0) {
+    try {
+      const userSnap = await admin.database().ref(`user/${uid}/name`).once('value');
+      if (userSnap.exists()) {
+        playerName = userSnap.val();
+      }
+    } catch (e) {
+      console.log("Fetch Name Error:", e.message);
+    }
+  }
+  playerName = playerName || "User";
 
   if (admin.apps.length > 0) {
     const userMoneyRef = admin.database().ref(`user/${uid}/money`);
@@ -206,14 +219,27 @@ app.post('/api/place-bet', async (req, res) => {
   const interval = type === '30s' ? 30 : 60;
   const nowSec = Math.floor(Date.now() / 1000);
   const currentRound = Math.floor(nowSec / interval);
-  
-  const betData = { round: currentRound, choice: String(choice).trim().toUpperCase(), amount: betAmount, gameType: type, status: 'Pending', time: Date.now() };
-  activeBets[type].push({ uid, ...betData });
 
+  // User တစ်ဦးချင်းစီအတွက် လက်ရှိ Round မှာ ဘယ်နှခုမြောက် Bet ထိုးတာလဲဆိုတာကို ရေတွက်ရန်
   if (!userBetsHistory[uid]) userBetsHistory[uid] = [];
+  let existingRoundBetsCount = userBetsHistory[uid].filter(b => b.round === currentRound && b.gameType === type).length;
+  let betIndex = existingRoundBetsCount + 1; // ဥပမာ - 1, 2, 3 အစရှိသဖြင့်
+  
+  const betData = { 
+    round: currentRound, 
+    betIndex: betIndex, // Bet တစ်ခုချင်းစီအတွက် အမှတ်စဉ် (1, 2, 3...)
+    playerName: playerName, 
+    choice: String(choice).trim().toUpperCase(), 
+    amount: betAmount, 
+    gameType: type, 
+    status: 'Pending', 
+    time: Date.now() 
+  };
+  
+  activeBets[type].push({ uid, ...betData });
   userBetsHistory[uid].unshift(betData);
 
-  return res.json({ success: true, message: "ထိုးကြေး အောင်မြင်စွာ တင်ပြီးပါပြီ!" });
+  return res.json({ success: true, message: `ထိုးကြေးအမှတ်စဉ် #${betIndex} အောင်မြင်စွာ တင်ပြီးပါပြီ!` });
 });
 
 // 2. ADMIN ENDPOINTS
@@ -227,9 +253,20 @@ app.get('/api/admin/get-data', (req, res) => {
   const bets = activeBets[gameType] || [];
   
   let totals = { BIG: 0, SMALL: 0, GREEN: 0, VIOLET: 0 };
+  let formattedBets = [];
+
   bets.forEach(b => {
     const c = b.choice.toUpperCase();
     if (totals[c] !== undefined) totals[c] += b.amount;
+
+    // Admin ဘက်မှာလည်း ဘယ်နှခုမြောက် Bet လဲဆိုတာ (ဥပမာ Name #1) ပေါ်အောင် ပြသမည်
+    formattedBets.push({
+      playerName: `${b.playerName} #${b.betIndex}`, 
+      choice: b.choice,
+      amount: b.amount,
+      status: b.status,
+      time: b.time
+    });
   });
 
   const forced = forcedResults[gameType];
@@ -239,7 +276,7 @@ app.get('/api/admin/get-data', (req, res) => {
     if (forced.number !== undefined && forced.number !== null && forced.number !== "") forcedStr = `ဂဏန်း (${forced.number})`;
   }
 
-  res.json({ round: currentRound, timer: timer, forced: forcedStr, totals: totals, bets: bets });
+  res.json({ round: currentRound, timer: timer, forced: forcedStr, totals: totals, bets: formattedBets });
 });
 
 app.post('/api/admin/set-result', (req, res) => {
