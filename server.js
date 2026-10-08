@@ -1,4 +1,3 @@
-
 const express = require('express');
 const path = require('path');
 const admin = require('firebase-admin');
@@ -15,7 +14,7 @@ if (process.env.FIREBASE_CONFIG) {
         const serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG);
         admin.initializeApp({
             credential: admin.credential.cert(serviceAccount),
-            databaseURL: "https://right-2c598-default-rtdb.firebaseio.com" // Project ID right-2c598 သို့ ပြောင်းလဲထားပါသည်
+            databaseURL: "https://right-2c598-default-rtdb.firebaseio.com"
         });
         console.log("Firebase Admin Initialized Successfully!");
     } catch (e) {
@@ -29,9 +28,10 @@ if (process.env.FIREBASE_CONFIG) {
 let activeBets = { '30s': [], '60s': [] };
 let forcedResults = { '30s': null, '60s': null };
 let gameHistory = { '30s': [], '60s': [] };
-let userBetsHistory = {}; // UID အလိုက် မှတ်တမ်း
+let userBetsHistory = {}; 
+
 // -------------------------------------------------------------
-// Auto Game Loop Engine (စက္ကန့်အလိုက် Result ထုတ်ပေးခြင်း)
+// Auto Game Loop Engine (ထိုးကြေးအနည်းဆုံးဘက်ကို အနိုင်ပေးခြင်း Logic)
 // -------------------------------------------------------------
 function startGameEngine(gameType) {
     const intervalSec = gameType === '30s' ? 30 : 60;
@@ -42,7 +42,6 @@ function startGameEngine(gameType) {
         const currentRound = Math.floor(nowSec / intervalSec);
         const timer = intervalSec - (nowSec % intervalSec);
 
-        // Timer 1 စက္ကန့် ရောက်ပါက ရလဒ် ထွက်ပြီး ငွေရှင်းပေးမည်
         if (timer === 1 && lastProcessedRound !== currentRound) {
             lastProcessedRound = currentRound;
 
@@ -53,31 +52,63 @@ function startGameEngine(gameType) {
             if (forced && (forced.number !== undefined && forced.number !== null && forced.number !== "")) {
                 winningNumber = parseInt(forced.number);
             } else if (forced && forced.choice) {
-                // Admin က Choice (BIG/SMALL/GREEN/RED/VIOLET) ပေးထားပါက
                 let c = forced.choice.toUpperCase();
-                if (c === "BIG") winningNumber = 5 + Math.floor(Math.random() * 5); // 5 - 9
-                else if (c === "SMALL") winningNumber = Math.floor(Math.random() * 5); // 0 - 4
-                else if (c === "GREEN") winningNumber = [1, 3, 7, 9][Math.floor(Math.random() * 4)];
-                else if (c === "RED") winningNumber = [2, 4, 6, 8][Math.floor(Math.random() * 4)];
-                else if (c === "VIOLET") winningNumber = [0, 5][Math.floor(Math.random() * 2)];
+                if (c === "BIG") winningNumber = 5 + Math.floor(Math.random() * 5);
+                else if (c === "SMALL") winningNumber = Math.floor(Math.random() * 5);
                 else winningNumber = Math.floor(Math.random() * 10);
             } else {
-                // 2. Auto Random ရွေးချယ်ခြင်း
-                winningNumber = Math.floor(Math.random() * 10);
+                // 2. Auto Logic: ရွေးချယ်စရာ အားလုံး (0 မှ 9 ထိ) ကို ထိုးငွေ စုစုပေါင်း တွက်မည်
+                const currentBets = activeBets[gameType] || [];
+                
+                let totals = { 
+                    '0': 0, '1': 0, '2': 0, '3': 0, '4': 0, 
+                    '5': 0, '6': 0, '7': 0, '8': 0, '9': 0,
+                    'BIG': 0, 'SMALL': 0 
+                };
+
+                currentBets.forEach(b => {
+                    let choice = String(b.choice || '').trim().toUpperCase();
+                    let amt = parseFloat(b.amount || 0);
+                    if (totals[choice] !== undefined) {
+                        totals[choice] += amt;
+                    }
+                });
+
+                // ဂဏန်း 0 မှ 9 ထဲမှ ထိုးငွေ အနည်းဆုံး (Lowest Bet) ဖြစ်သည့် ဂဏန်းကို ရှာမည်
+                let minBet = Infinity;
+                let bestNumbers = [];
+
+                for (let num = 0; num <= 9; num++) {
+                    let betSum = totals[String(num)] || 0;
+                    
+                    // BIG / SMALL ထိုးထားမှုများကိုပါ သက်ဆိုင်ရာ ဂဏန်းများဆီသို့ ထည့်သွင်း စဉ်းစားနိုင်သည်
+                    if (num >= 5) {
+                        betSum += (totals['BIG'] || 0);
+                    } else {
+                        betSum += (totals['SMALL'] || 0);
+                    }
+
+                    if (betSum < minBet) {
+                        minBet = betSum;
+                        bestNumbers = [num];
+                    } else if (betSum === minBet) {
+                        bestNumbers.push(num);
+                    }
+                }
+
+                // ထိုးကြေးအနည်းဆုံး ဂဏန်းများထဲမှ ကျပန်း တစ်ခုယူမည်
+                winningNumber = bestNumbers[Math.floor(Math.random() * bestNumbers.length)];
             }
 
-            // Color & BS တွက်ချက်ခြင်း Logic
-            if (winningNumber === 0 || winningNumber === 5) {
-                resultColor = "VIOLET";
-            } else if (winningNumber % 2 === 0) {
-                resultColor = "RED";
-            } else {
+            // အရောင်နှင့် Big/Small သတ်မှတ်ခြင်း (ပုံပါအတိုင်း 0, 2, 4, 6, 8 = GREEN / 1, 3, 5, 7, 9 = PURPLE)
+            if (winningNumber === 0 || winningNumber === 2 || winningNumber === 4 || winningNumber === 6 || winningNumber === 8) {
                 resultColor = "GREEN";
+            } else {
+                resultColor = "PURPLE";
             }
 
             resultBS = winningNumber >= 5 ? "BIG" : "SMALL";
 
-            // Game History ထဲသို့ အသစ် ထည့်သွင်းခြင်း
             const historyItem = {
                 round: currentRound,
                 number: winningNumber,
@@ -87,12 +118,10 @@ function startGameEngine(gameType) {
             
             if (!gameHistory[gameType]) gameHistory[gameType] = [];
             gameHistory[gameType].unshift(historyItem);
-            if (gameHistory[gameType].length > 30) gameHistory[gameType].pop(); // နောက်ဆုံး ၃၀ ခု သိမ်းမည်
+            if (gameHistory[gameType].length > 30) gameHistory[gameType].pop();
 
-            // Bet ထိုးထားသူများကို နိုင်/ရှုံး စစ်ဆေးပြီး ငွေပေါင်းပေးခြင်း
             await settleBetsEngine(gameType, currentRound, winningNumber, resultColor, resultBS);
 
-            // Round ပြီးသွားပါက Memory Clear ပြုလုပ်ခြင်း
             activeBets[gameType] = [];
             forcedResults[gameType] = null;
         }
@@ -104,7 +133,7 @@ startGameEngine('30s');
 startGameEngine('60s');
 
 // -------------------------------------------------------------
-// Settle Bets Engine (နိုင်သူများကို 1.95x / 9x ငွေပြန်ပေါင်းပေးမည့် Logic)
+// Settle Bets Engine
 // -------------------------------------------------------------
 async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColor, resultBS) {
     try {
@@ -119,24 +148,21 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
             let choice = String(bet.choice || '').trim().toUpperCase();
             let isWin = false;
 
-            // --- နိုင်/ရှုံး စစ်ဆေးသည့် Logic ---
             if (choice === resultBS) {
-                isWin = true; // BIG or SMALL (1.95x)
-            } else if (choice === resultColor) {
-                isWin = true; // GREEN, VIOLET, RED (1.95x)
+                isWin = true; 
+            } else if (choice === resultColor || (resultColor === "PURPLE" && choice === "VIOLET")) {
+                isWin = true; 
             } else if (choice === String(winningNumber)) {
-                isWin = true; // ဂဏန်း အတိအကျ 0 - 9 (9x)
+                isWin = true; 
             }
 
             bet.status = isWin ? 'Win' : 'Lose';
 
-            // User My History ထဲတွင် Status (Win / Lose) ပြောင်းပေးခြင်း
             if (userBetsHistory[userId]) {
                 let uBet = userBetsHistory[userId].find(b => b.round === roundNumber && b.gameType === gameType);
                 if (uBet) uBet.status = bet.status;
             }
 
-            // --- နိုင်ပါက Firebase Realtime Database 'user/{uid}/money' ထဲသို့ ပေါင်းပေးခြင်း ---
             if (isWin) {
                 let winMultiplier = (choice === String(winningNumber)) ? 9.0 : 1.95;
                 let winAmount = amount * winMultiplier;
@@ -149,8 +175,6 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
                         return val + winAmount;
                     });
                     console.log(`[WIN SUCCESS] User ${userId} received +${winAmount} MMK`);
-                } else {
-                    console.log(`[ERROR] Firebase Admin Not Initialized! Could not credit ${userId}`);
                 }
             }
         }
@@ -162,8 +186,6 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
 // -------------------------------------------------------------
 // 1. APP / USER ENDPOINTS
 // -------------------------------------------------------------
-
-// (A) User Data Request (Round, Timer, Game History & My History)
 app.get('/api/user/get-data', (req, res) => {
     const gameType = req.query.gameType || '30s';
     const uid = req.query.uid;
@@ -204,7 +226,7 @@ app.post('/api/place-bet', async (req, res) => {
         await userMoneyRef.transaction((currentMoney) => {
             let val = parseFloat(currentMoney);
             if (isNaN(val)) val = 0;
-            return val - betAmount; // ငွေပေါင်းတဲ့နေရာမှာ + လုပ်သလို ဒီမှာ - လုပ်ပေးလိုက်ပါသည်
+            return val - betAmount;
         });
         console.log(`[BET SUCCESS] User ${uid} deducted -${betAmount} MMK`);
     }
@@ -232,7 +254,6 @@ app.post('/api/place-bet', async (req, res) => {
 
 // 2. ADMIN ENDPOINTS
 // -------------------------------------------------------------
-
 app.get('/api/admin/get-data', (req, res) => {
     const gameType = req.query.gameType || '30s';
     const interval = gameType === '30s' ? 30 : 60;
@@ -243,7 +264,7 @@ app.get('/api/admin/get-data', (req, res) => {
 
     const bets = activeBets[gameType] || [];
 
-    let totals = { BIG: 0, SMALL: 0, GREEN: 0, VIOLET: 0, RED: 0 };
+    let totals = { BIG: 0, SMALL: 0, GREEN: 0, PURPLE: 0, VIOLET: 0 };
     bets.forEach(b => {
         const c = b.choice.toUpperCase();
         if (totals[c] !== undefined) totals[c] += b.amount;
