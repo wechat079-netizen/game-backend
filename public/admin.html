@@ -13,7 +13,6 @@
         .tab-btn.active { background: #00e5ff; color: #000; }
         .info-box { background: #11141d; padding: 15px; border-radius: 8px; border-left: 4px solid #00e5ff; margin-bottom: 20px; }
         
-        /* Total Bets Grid UI */
         .total-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; }
         .total-box { padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; }
         .bg-big { background: #c62828; }
@@ -29,20 +28,35 @@
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid #2a3040; padding: 10px; text-align: center; font-size: 13px; }
         th { background: #11141d; color: #00e5ff; }
+
+        /* Login Modal Overlay */
+        #loginOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(18, 21, 30, 0.95); display: flex; justify-content: center; align-items: center; z-index: 999;
+        }
+        .login-card { background: #1a1e29; padding: 30px; border-radius: 12px; border: 1px solid #2a3040; width: 300px; text-align: center; }
     </style>
 </head>
 <body>
 
+    <!-- Admin Password Login Screen -->
+    <div id="loginOverlay">
+        <div class="login-card">
+            <h3>🔐 Admin Login</h3>
+            <p style="font-size: 13px; color: #8a99ad;">Password ထည့်သွင်းပါ</p>
+            <input type="password" id="adminPasswordInput" placeholder="Password (admin125199*)">
+            <button class="btn-submit" onclick="verifyLogin()">ဝင်မည်</button>
+        </div>
+    </div>
+
     <div class="card">
         <h2>🎮 Game Control Panel</h2>
 
-        <!-- Tab Switcher -->
         <div class="tab-container">
             <button id="btn30s" class="tab-btn active" onclick="switchGame('30s')">30 Seconds Game</button>
             <button id="btn60s" class="tab-btn" onclick="switchGame('60s')">60 Seconds Game</button>
         </div>
 
-        <!-- Live Status Info -->
         <div class="info-box">
             <div>လက်ရှိ Game Mode: <span id="currentGameMode" style="color:#00e5ff; font-weight:bold;">30s</span></div>
             <div>လက်ရှိ Round: <span id="roundNo" style="color:#ff9800; font-weight:bold;">--</span></div>
@@ -70,7 +84,6 @@
         <button class="btn-submit" onclick="setNumberResult()">ဂဏန်း အတည်ပြုမည်</button>
     </div>
 
-    <!-- Live Bet Table -->
     <div class="card">
         <h3>📋 ကစားသမားများ ထိုးထားသော စာရင်း</h3>
         <table>
@@ -89,7 +102,34 @@
 
     <script>
         let currentGame = '30s';
-        const adminToken = "admin12345"; // Backend တွင် သတ်မှတ်ထားသော Secret Key
+        let adminToken = localStorage.getItem('admin_token') || '';
+
+        // စစချင်း Token ရှိမရှိ စစ်ဆေးမည်
+        if (adminToken) {
+            document.getElementById('loginOverlay').style.display = 'none';
+            fetchAdminData();
+            setInterval(fetchAdminData, 1000);
+        }
+
+        async function verifyLogin() {
+            const pwd = document.getElementById('adminPasswordInput').value;
+            if (!pwd) return alert("Password ထည့်ပါ!");
+
+            // စမ်းသပ်ချက်အနေဖြင့် တောင်းဆိုကြည့်မည်
+            const res = await fetch(`/api/admin/get-data?gameType=${currentGame}`, {
+                headers: { 'x-admin-token': pwd }
+            });
+
+            if (res.ok) {
+                adminToken = pwd;
+                localStorage.setItem('admin_token', adminToken);
+                document.getElementById('loginOverlay').style.display = 'none';
+                fetchAdminData();
+                setInterval(fetchAdminData, 1000);
+            } else {
+                alert("Password မှားယွင်းနေပါသည်!");
+            }
+        }
 
         function switchGame(type) {
             currentGame = type;
@@ -106,13 +146,15 @@
         }
 
         async function fetchAdminData() {
+            if (!adminToken) return;
             try {
                 const res = await fetch(`/api/admin/get-data?gameType=${currentGame}`, {
                     headers: { 'x-admin-token': adminToken }
                 });
                 
-                if (!res.ok) {
-                    console.log("Unauthorized or Network Error");
+                if (res.status === 403) {
+                    localStorage.removeItem('admin_token');
+                    document.getElementById('loginOverlay').style.display = 'flex';
                     return;
                 }
 
@@ -145,8 +187,6 @@
                 console.log("Error loading admin data:", e);
             }
         }
-
-        setInterval(fetchAdminData, 1000);
 
         async function setChoiceResult(choice) {
             const res = await fetch('/api/admin/set-result', {
