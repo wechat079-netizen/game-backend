@@ -23,9 +23,9 @@
     <!-- Login Section -->
     <div id="loginSection" class="login-box">
         <h3>🔐 Admin Login</h3>
-        <p>Admin Password ထည့်ပါ</p>
-        <input type="password" id="adminPasswordInput" placeholder="Password ထည့်ရန်...">
-        <button onclick="doLogin()">ဝင်မည်</button>
+        <p>Password ထည့်ပါ</p>
+        <input type="password" id="adminPasswordInput" placeholder="Admin125199*">
+        <button onclick="simpleLogin()">ဝင်မည်</button>
     </div>
 
     <!-- Admin Dashboard Section -->
@@ -59,62 +59,33 @@
 
     <script>
         let currentGameType = '30s';
-        let refreshTimer;
-        let currentAdminPwd = ''; // Password ကို သိမ်းဆည်းရန်
+        let globalPassword = '';
 
-        // ဝင်မည် ခလုတ်နှိပ်သည့်အခါ
-        function doLogin() {
+        function simpleLogin() {
             const pwd = document.getElementById('adminPasswordInput').value;
-            if (!pwd) {
-                alert('Password ထည့်ပါခင်ဗျာ။');
-                return;
-            }
-
-            // Server ဆီသို့ API ဖြင့် တိုက်ရိုက် စစ်ဆေးရန် ပို့မည်
-            fetch(`/api/admin/get-data?gameType=${currentGameType}`, {
-                headers: {
-                    'x-admin-token': pwd
-                }
-            })
-            .then(res => {
-                if (!res.ok) {
-                    throw new Error('Password မှားယွင်းနေပါသည်။');
-                }
-                return res.json();
-            })
-            .then(data => {
-                // မှန်ကန်ပါက Password ကို သိမ်းဆည်းမည်
-                currentAdminPwd = pwd;
-
-                // Login မျက်နှာပြင်ကိုဖျောက်၍ Dashboard ပြမည်
+            
+            // Front-end ဘက်ကနေ တိုက်ရိုက် စစ်ဆေးမည် (အလွယ်ဆုံးပုံစံ)
+            if (pwd === "Admin125199*") {
+                globalPassword = pwd;
                 document.getElementById('loginSection').classList.add('hidden');
                 document.getElementById('adminDashboard').classList.remove('hidden');
-                renderDashboard(data);
-
-                // ၂ စက္ကန့်တစ်ကြိမ် ဒေတာအသစ် ဆွဲထုတ်ရန်
-                clearInterval(refreshTimer);
-                refreshTimer = setInterval(() => {
-                    fetchData();
-                }, 2000);
-            })
-            .catch(err => {
-                alert(err.message);
-            });
+                
+                fetchData();
+                setInterval(fetchData, 2000); // ၂ စက္ကန့်တစ်ကြိမ် ဒေတာဆွဲမည်
+            } else {
+                alert('Password မှားယွင်းနေပါသည်။');
+            }
         }
 
-        // ဒေတာလှမ်းဆွဲသည့် သီးသန့် Function
         function fetchData() {
-            if (!currentAdminPwd) return;
-
             fetch(`/api/admin/get-data?gameType=${currentGameType}`, {
-                headers: { 'x-admin-token': currentAdminPwd }
+                headers: { 'x-admin-token': globalPassword }
             })
-            .then(r => {
-                if (!r.ok) throw new Error('ဒေတာ ရယူ၍ မရပါ။');
-                return r.json();
+            .then(res => res.json())
+            .then(data => {
+                renderDashboard(data);
             })
-            .then(d => renderDashboard(d))
-            .catch(e => console.log(e));
+            .catch(err => console.log(err));
         }
 
         function renderDashboard(data) {
@@ -144,8 +115,6 @@
         function switchGame(type) {
             currentGameType = type;
             document.getElementById('currentGameLabel').innerText = `Current: ${type}`;
-            
-            // Game ပြောင်းလိုက်သည်နှင့် သက်ဆိုင်ရာ Game အမျိုးအစားအလိုက် ဒေတာအသစ် ချက်ချင်းဆွဲမည်
             fetchData();
         }
     </script>
