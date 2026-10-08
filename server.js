@@ -31,6 +31,21 @@ let gameHistory = { '30s': [], '60s': [] };
 let userBetsHistory = {}; 
 
 // -------------------------------------------------------------
+// Admin Auth Middleware (လုံခြုံရေးအတွက် Admin Token / Password စစ်ဆေးခြင်း)
+// -------------------------------------------------------------
+const adminAuth = (req, res, next) => {
+    const adminToken = req.headers['x-admin-token'] || req.query.token;
+    // သင်အလိုရှိသော Admin Password / Token ကို ဤနေရာတွင် သတ်မှတ်နိုင်ပါသည်။ (ဥပမာ - "my_secret_admin_123")
+    const SECRET_ADMIN_KEY = process.env.ADMIN_SECRET || "admin12345"; 
+
+    if (adminToken === SECRET_ADMIN_KEY) {
+        next();
+    } else {
+        res.status(403).json({ success: false, message: "ခွင့်ပြုချက် မရှိပါ (Unauthorized Access)!" });
+    }
+};
+
+// -------------------------------------------------------------
 // Auto Game Loop Engine (ထိုးကြေးအနည်းဆုံးဘက်ကို အနိုင်ပေးခြင်း Logic)
 // -------------------------------------------------------------
 function startGameEngine(gameType) {
@@ -48,7 +63,6 @@ function startGameEngine(gameType) {
             let winningNumber, resultColor, resultBS;
             const forced = forcedResults[gameType];
 
-            // 1. Admin မှ Control လုပ်ထားပါက Forced Result ယူမည်
             if (forced && (forced.number !== undefined && forced.number !== null && forced.number !== "")) {
                 winningNumber = parseInt(forced.number);
             } else if (forced && forced.choice) {
@@ -57,7 +71,6 @@ function startGameEngine(gameType) {
                 else if (c === "SMALL") winningNumber = Math.floor(Math.random() * 5);
                 else winningNumber = Math.floor(Math.random() * 10);
             } else {
-                // 2. Auto Logic: ရွေးချယ်စရာ အားလုံး (0 မှ 9 ထိ) ကို ထိုးငွေ စုစုပေါင်း တွက်မည်
                 const currentBets = activeBets[gameType] || [];
                 
                 let totals = { 
@@ -74,14 +87,12 @@ function startGameEngine(gameType) {
                     }
                 });
 
-                // ဂဏန်း 0 မှ 9 ထဲမှ ထိုးငွေ အနည်းဆုံး (Lowest Bet) ဖြစ်သည့် ဂဏန်းကို ရှာမည်
                 let minBet = Infinity;
                 let bestNumbers = [];
 
                 for (let num = 0; num <= 9; num++) {
                     let betSum = totals[String(num)] || 0;
                     
-                    // BIG / SMALL နှင့် အရောင် ထိုးထားမှုများကိုပါ သက်ဆိုင်ရာ ဂဏန်းများဆီသို့ ထည့်သွင်း စဉ်းစားမည်
                     if (num >= 5) {
                         betSum += (totals['BIG'] || 0);
                     } else {
@@ -102,11 +113,9 @@ function startGameEngine(gameType) {
                     }
                 }
 
-                // ထိုးကြေးအနည်းဆုံး ဂဏန်းများထဲမှ ကျပန်း တစ်ခုယူမည်
                 winningNumber = bestNumbers[Math.floor(Math.random() * bestNumbers.length)];
             }
 
-            // အရောင်နှင့် Big/Small သတ်မှတ်ခြင်း (0, 2, 4, 6, 8 = GREEN / 1, 3, 5, 7, 9 = VIOLET)
             if (winningNumber === 0 || winningNumber === 2 || winningNumber === 4 || winningNumber === 6 || winningNumber === 8) {
                 resultColor = "GREEN";
             } else {
@@ -134,7 +143,6 @@ function startGameEngine(gameType) {
     }, 1000);
 }
 
-// Game Loop များ စတင်ခြင်း
 startGameEngine('30s');
 startGameEngine('60s');
 
@@ -145,8 +153,6 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
     try {
         const currentBets = activeBets[gameType] || [];
         if (currentBets.length === 0) return;
-
-        console.log(`[Round ${roundNumber}] Processing ${currentBets.length} bets for ${gameType}...`);
 
         for (let bet of currentBets) {
             let userId = bet.uid;
@@ -180,7 +186,6 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
                         if (isNaN(val)) val = 0;
                         return val + winAmount;
                     });
-                    console.log(`[WIN SUCCESS] User ${userId} received +${winAmount} MMK`);
                 }
             }
         }
@@ -234,7 +239,6 @@ app.post('/api/place-bet', async (req, res) => {
             if (isNaN(val)) val = 0;
             return val - betAmount;
         });
-        console.log(`[BET SUCCESS] User ${uid} deducted -${betAmount} MMK`);
     }
 
     const interval = type === '30s' ? 30 : 60;
@@ -258,9 +262,9 @@ app.post('/api/place-bet', async (req, res) => {
     return res.json({ success: true, message: "ထိုးကြေး အောင်မြင်စွာ တင်ပြီးပါပြီ!" });
 });
 
-// 2. ADMIN ENDPOINTS
+// 2. ADMIN ENDPOINTS (Admin Auth ဖြင့် ကာကွယ်ထားပြီး UID ကို နာမည် သို့မဟုတ် Mask ပြုလုပ်ခြင်း)
 // -------------------------------------------------------------
-app.get('/api/admin/get-data', (req, res) => {
+app.get('/api/admin/get-data', adminAuth, async (req, res) => {
     const gameType = req.query.gameType || '30s';
     const interval = gameType === '30s' ? 30 : 60;
     
@@ -271,10 +275,35 @@ app.get('/api/admin/get-data', (req, res) => {
     const bets = activeBets[gameType] || [];
 
     let totals = { BIG: 0, SMALL: 0, GREEN: 0, VIOLET: 0 };
-    bets.forEach(b => {
+    
+    // UID အစား Player နာမည် (သို့မဟုတ် ဖုံးကွယ်ထားသော ID) ကို ပြသရန် စီစဉ်ခြင်း
+    const sanitizedBets = await Promise.all(bets.map(async (b, index) => {
         const c = b.choice.toUpperCase();
         if (totals[c] !== undefined) totals[c] += b.amount;
-    });
+
+        // Firebase မှ User ၏ နာမည် (သို့) Profile ကို ယူမည် (မရှိပါက Player 1, Player 2 ဟုပြမည်)
+        let displayName = `Player ${index + 1}`;
+        try {
+            if (admin.apps.length > 0) {
+                const userSnapshot = await admin.database().ref(`user/${b.uid}/name`).once('value');
+                if (userSnapshot.exists()) {
+                    displayName = userSnapshot.val();
+                }
+            }
+        } catch (e) {
+            displayName = `User_${b.uid.substring(0, 4)}`;
+        }
+
+        return {
+            round: b.round,
+            playerName: displayName, // UID ကို မပြတော့ဘဲ နာမည် သို့မဟုတ် Mask လုပ်ထားသော နာမည်ကိုသာ ပြမည်
+            choice: b.choice,
+            amount: b.amount,
+            gameType: b.gameType,
+            status: b.status,
+            time: b.time
+        };
+    }));
 
     const forced = forcedResults[gameType];
     let forcedStr = "Auto (မပြင်ထားပါ)";
@@ -288,11 +317,11 @@ app.get('/api/admin/get-data', (req, res) => {
         timer: timer,
         forced: forcedStr,
         totals: totals,
-        bets: bets
+        bets: sanitizedBets
     });
 });
 
-app.post('/api/admin/set-result', (req, res) => {
+app.post('/api/admin/set-result', adminAuth, (req, res) => {
     const { gameType, choice, number } = req.body;
     if (gameType) {
         forcedResults[gameType] = { choice, number };
