@@ -11,13 +11,13 @@ const io = new Server(server);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Firebase Initialization (သင့်ရဲ့ serviceAccountKey.json ဖြင့်ချိတ်ဆက်ရန်)
-/*
+// Firebase Initialization (မှန်ကန်စွာ ချိတ်ဆက်ခြင်း)
+const serviceAccount = require('./right-2c598-firebase-adminsdk-fbsvc-b86013f3a3.json');
+
 admin.initializeApp({
-  credential: admin.credential.cert(require('./right-2c598-firebase-adminsdk-fbsvc-b86013f3a3.json')),
+  credential: admin.credential.cert(serviceAccount),
   databaseURL: "https://right-2c598-default-rtdb.firebaseio.com/"
 });
-*/
 
 const db = admin.database();
 
