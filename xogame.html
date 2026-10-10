@@ -227,7 +227,8 @@
 
                     db.ref(`matchmaking/rooms/${activeRoomId}`).update({
                         player2: uid,
-                        status: "playing"
+                        status: "playing",
+                        [`lastActive_${myRole}`]: Date.now()
                     });
                     db.ref(`matchmaking/queue/${activeRoomId}`).remove();
                     startGameSession();
@@ -246,7 +247,9 @@
                         board: ["","","","","","","","",""],
                         turn: "X",
                         gameOver: false,
-                        winner: ""
+                        winner: "",
+                        lastActive_X: Date.now(),
+                        lastActive_O: Date.now()
                     });
 
                     db.ref(`matchmaking/queue/${activeRoomId}`).set({
@@ -287,6 +290,15 @@
             document.getElementById("game-screen").style.display = "block";
             rewardProcessed = false;
 
+            // ⏱️ Heartbeat: ကိုယ်အမြဲ Online ရှိနေကြောင်း Firebase သို့ တစက္ကန့်ချင်းစီ သတင်းပို့နေမည်
+            const heartbeatInterval = setInterval(() => {
+                if (activeRoomId && !gameOver) {
+                    db.ref(`matchmaking/rooms/${activeRoomId}/lastActive_${myRole}`).set(Date.now());
+                } else {
+                    clearInterval(heartbeatInterval);
+                }
+            }, 3000);
+
             db.ref(`matchmaking/rooms/${activeRoomId}`).on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (!data) return;
@@ -297,14 +309,26 @@
 
                 updateGameUI();
 
+                // 🚨 ပြိုင်ဘက်က ၁၂ စက္ကန့်ကျော်အထိ Signal (Heartbeat) မပို့တော့လျှင် ထွက်သွားပြီဟု ယူဆ၍ ကိုယ်က နိုင်သည်ဟု သတ်မှတ်မည်
+                const opponentRole = (myRole === "X") ? "O" : "X";
+                const oppLastActive = data[`lastActive_${opponentRole}`] || 0;
+                
+                if (!gameOver && data.status === "playing" && oppLastActive > 0 && (Date.now() - oppLastActive > 12000)) {
+                    db.ref(`matchmaking/rooms/${activeRoomId}`).update({
+                        gameOver: true,
+                        winner: myRole
+                    });
+                }
+
                 if (gameOver && !rewardProcessed) {
                     rewardProcessed = true;
+                    clearInterval(heartbeatInterval);
                     
                     if (data.winner === myRole) {
                         let payout = Math.floor(data.bet * 1.9);
                         db.ref(`user/${uid}/money`).transaction((money) => (money || 0) + payout);
                         saveHistory("WIN", data.bet, payout);
-                        alert("🎉 ဂုဏ်ယူပါတယ်! သင် နိုင်သွားပါပြီ (+ " + payout.toLocaleString() + " MMK)");
+                        alert("🎉 ဂုဏ်ယူပါတယ်! ပြိုင်ဘက်ထွက်သွားသဖြင့် (သို့မဟုတ်) နိုင်သွားသဖြင့် သင် အနိုင်ရရှိပါသည် (+ " + payout.toLocaleString() + " MMK)");
                     } else if (data.winner === "Draw") {
                         db.ref(`user/${uid}/money`).transaction((money) => (money || 0) + data.bet);
                         saveHistory("DRAW", data.bet, data.bet);
@@ -359,7 +383,8 @@
                 board: boardState,
                 turn: turn,
                 gameOver: isGameOver,
-                winner: winningSymbol
+                winner: winningSymbol,
+                [`lastActive_${myRole}`]: Date.now()
             });
         }
 
