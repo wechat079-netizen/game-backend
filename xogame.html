@@ -44,7 +44,7 @@
         <!-- Header: ဘယ်ဘက် နာမည်၊ ညာဘက် ငွေလက်ကျန် -->
         <div class="header">
             <div class="user-info">
-                <span>👤</span> <span id="name">Loading...</span>
+                <span>👤</span> <span id="username">Loading...</span>
             </div>
             <div class="balance-info">
                 <span>💰</span> <span id="user-money">Loading...</span>
@@ -106,7 +106,7 @@
         const db = firebase.database();
 
         const urlParams = new URLSearchParams(window.location.search);
-        let uid = urlParams.get('uid') || "3lxCl5C7fIOlK9n0Bv5iA9Xbf5J3"; // UID မပါပါက Test UID သုံးမည်
+        let uid = urlParams.get('uid') || "3lxCl5C7fIOlK9n0Bv5iA9Xbf5J3";
 
         let currentMoney = 0;
         let activeRoomId = localStorage.getItem("activeRoomId_" + uid) || null;
@@ -117,25 +117,30 @@
         let gameOver = false;
         let rewardProcessed = false;
 
-        // Firebase မှ User အချက်အလက် (Name နှင့် Money) ကို တိုက်ရိုက်လှမ်းယူခြင်း
+        // Firebase မှ User အချက်အလက် (Sketchware Map Key 'name' နှင့် 'money' တို့ကို ချိန်ညှိထားသည်)[span_1](start_span)[span_1](end_span)
         const userRef = db.ref(`user/${uid}`);
-        userRef.once('value', (snapshot) => {
-            if (!snapshot.exists()) {
-                userRef.set({
-                    username: "User_" + uid.slice(-4),
-                    money: 10000 
-                });
-            }
-        });
-
+        
         userRef.on('value', (snapshot) => {
             if(snapshot.exists()) {
                 const userData = snapshot.val();
+                
                 currentMoney = userData.money || 0;
                 document.getElementById("user-money").innerText = currentMoney.toLocaleString() + " MMK";
-                if(userData.username) {
-                    document.getElementById("username").innerText = userData.username; // UID အစား Database ထဲက နာမည်အမှန်ကို ပြမည်
+                
+                // Sketchware မှ name ကို ဦးစားပေးဖော်ပြမည်[span_2](start_span)[span_2](end_span)
+                if(userData.name) {
+                    document.getElementById("username").innerText = userData.name;
+                } else if(userData.username) {
+                    document.getElementById("username").innerText = userData.username;
+                } else {
+                    document.getElementById("username").innerText = "User_" + uid.slice(-4);
                 }
+            } else {
+                // အကယ်၍ Data မရှိသေးပါက Default တန်ဖိုးသတ်မှတ်ပေးရန်
+                userRef.set({
+                    name: "Player_" + uid.slice(-4),
+                    money: 10000 
+                });
             }
         });
 
@@ -154,7 +159,6 @@
             });
         }
 
-        // UID သီးသန့်အလျောက် Match History များကို ဆွဲထုတ်ပြသခြင်း
         function loadMatchHistory() {
             db.ref(`user_history/${uid}`).limitToLast(5).on('value', (snapshot) => {
                 const historyList = document.getElementById("history-list");
@@ -175,7 +179,6 @@
             });
         }
 
-        // မှတ်တမ်းသိမ်းဆည်းရာတွင် အနိုင်/အရှုံး ပမာဏအမှန်ကို ထည့်သွင်းခြင်း
         function saveHistory(resultText, betAmount, payoutAmount) {
             db.ref(`user_history/${uid}`).push({
                 bet: betAmount,
@@ -193,7 +196,7 @@
                 return;
             }
 
-            // လုံခြုံရေးပိုင်း: Transaction ဖြင့် ငွေဖြတ်ခြင်း
+            // ငွေလုံခြုံရေးအတွက် Firebase Transaction ဖြင့် ငွေဖြတ်ခြင်း
             db.ref(`user/${uid}/money`).transaction((money) => {
                 if (money === null || money < selectedBet) return;
                 return money - selectedBet;
