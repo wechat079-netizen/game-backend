@@ -240,35 +240,6 @@ app.post('/api/place-bet', async (req, res) => {
     return res.status(400).json({ success: false, message: "ထိုးငွေ ပမာဏ မမှန်ကန်ပါ!" });
   }
 
-  // --- Transaction ဖြင့် ငွေလက်ကျန် လုံလောက်မှုရှိမရှိ စစ်ဆေးပြီး ချက်ချင်းနုတ်ယူခြင်း ---
-  if (admin.apps.length > 0) {
-    try {
-      const userMoneyRef = admin.database().ref(`user/${uid}/money`);
-      let transactionSuccess = false;
-
-      await userMoneyRef.transaction((currentMoney) => {
-        let val = parseFloat(currentMoney);
-        if (isNaN(val)) val = 0;
-
-        if (val < betAmount) {
-          // ငွေမလောက်ပါက Transaction ကို Abort လုပ်မည် (ငွေမနုတ်ပါ)
-          return; 
-        }
-
-        transactionSuccess = true;
-        return val - betAmount;
-      });
-
-      if (!transactionSuccess) {
-        return res.status(400).json({ success: false, message: "ငွေလက်ကျန် မလုံလောက်ပါ!" });
-      }
-    } catch (e) {
-      console.log("Balance Transaction Error:", e.message);
-      return res.status(500).json({ success: false, error: e.message });
-    }
-  }
-  // -----------------------------------------------------------------------------
-
   let playerName = name;
   if (!playerName && admin.apps.length > 0) {
     try {
@@ -281,6 +252,15 @@ app.post('/api/place-bet', async (req, res) => {
     }
   }
   playerName = playerName || "User";
+
+  if (admin.apps.length > 0) {
+    const userMoneyRef = admin.database().ref(`user/${uid}/money`);
+    await userMoneyRef.transaction((currentMoney) => {
+      let val = parseFloat(currentMoney);
+      if (isNaN(val)) val = 0;
+      return val - betAmount;
+    });
+  }
 
   let betKey = "";
   const betData = { 
