@@ -1,120 +1,445 @@
-const express = require('express');
-const admin = require('firebase-admin');
-const path = require('path');
+<!DOCTYPE html>
+<html lang="my">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Control Panel</title>
+    <!-- Firebase CDN (Compat Versions) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        body { font-family: sans-serif; background-color: #12151e; color: #ffffff; margin: 0; padding: 15px; }
+        .card { background: #1a1e29; padding: 20px; border-radius: 12px; border: 1px solid #2a3040; margin-bottom: 15px; }
+        h2, h3 { text-align: center; color: #00e5ff; margin-top: 0; }
+        .tab-container { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab-btn { flex: 1; padding: 12px; border: none; background: #2a3040; color: #8a99ad; font-weight: bold; border-radius: 8px; cursor: pointer; font-size: 16px; }
+        .tab-btn.active { background: #00e5ff; color: #000; }
+        .info-box { background: #11141d; padding: 15px; border-radius: 8px; border-left: 4px solid #00e5ff; margin-bottom: 20px; }
 
-const app = express();
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+        .total-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; }
+        .total-box { padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; }
+        .bg-big { background: #c62828; }
+        .bg-small { background: #2e7d32; }
+        .bg-green { background: #388e3c; }
+        .bg-violet { background: #7b1fa2; }
 
-// Firebase Admin SDK ကို Initialize လုပ်ခြင်း
-// (သင့်ရဲ့ Project ထဲမှာ serviceAccountKey.json ဖိုင် ထည့်ထားရပါမည်)
-const serviceAccount = require('./serviceAccountKey.json');
+        .flex-btns { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+        .btn-ctrl { flex: 1; min-width: 45%; padding: 12px; border: none; border-radius: 8px; color: #fff; font-weight: bold; cursor: pointer; }
+        input { width: 100%; padding: 12px; margin-top: 10px; box-sizing: border-box; background: #11141d; border: 1px solid #2a3040; color: #fff; border-radius: 8px; }
+        .btn-submit { width: 100%; background: #00e5ff; color: #000; padding: 12px; border: none; border-radius: 8px; font-weight: bold; margin-top: 10px; cursor: pointer; }
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  databaseURL: "https://right-2c598-default-rtdb.firebaseio.com"
-});
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #2a3040; padding: 10px; text-align: center; font-size: 13px; }
+        th { background: #11141d; color: #00e5ff; }
 
-const db = admin.database();
-
-// ဂိမ်းအချက်အလက်များနှင့် History များ သိမ်းဆည်းရန်
-// Player က Bet တင်သည့် API
-app.post('/api/bet', async (req, res) => {
-    try {
-        const { gameType, playerName, choice, amount } = req.body;
-        
-        if (!gameType || !playerName || !choice || !amount) {
-            return res.status(400).json({ success: false, message: 'အချက်အလက် မပြည့်စုံပါ။' });
+        #loginOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(18, 21, 30, 0.95);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
         }
 
-        const betData = {
-            playerName,
-            choice,
-            amount: Number(amount),
-            timestamp: Date.now()
+        .login-card {
+            background: #1a1e29;
+            padding: 30px;
+            border-radius: 12px;
+            border: 1px solid #2a3040;
+            width: 300px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Login Screen -->
+    <div id="loginOverlay">
+        <div class="login-card">
+            <h3>🔐 Admin Login</h3>
+
+            <p style="font-size: 13px; color: #8a99ad;">
+                Admin Password ရိုက်ထည့်ပါ
+            </p>
+
+            <input
+                type="password"
+                id="adminPasswordInput"
+                placeholder="Password"
+                autocomplete="off"
+            >
+
+            <button class="btn-submit" onclick="verifyLogin()">
+                ဝင်မည်
+            </button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h5>Super Admin</h5>
+
+        <div class="tab-container">
+            <button id="btn30s" class="tab-btn active" onclick="switchGame('30s')">
+                30 Seconds Game
+            </button>
+
+            <button id="btn60s" class="tab-btn" onclick="switchGame('60s')">
+                60 Seconds Game
+            </button>
+        </div>
+
+        <div class="info-box">
+            <div>
+                လက်ရှိ Game Mode:
+                <span id="currentGameMode" style="color:#00e5ff; font-weight:bold;">
+                    30s
+                </span>
+            </div>
+            <div>
+                လက်ရှိ Round:
+                <span id="roundNo" style="color:#ff9800; font-weight:bold;">
+                    --
+                </span>
+            </div>
+            <div>
+                ကျန်ရှိချိန်:
+                <span id="timer" style="color:#00e5ff; font-size:18px; font-weight:bold;">
+                    --
+                </span>
+                စက္ကန့်
+            </div>
+
+            <div>
+                Result:
+                <span id="forcedStatus" style="color:#ff9800;">
+                    Auto (မပြင်ထားပါ)
+                </span>
+            </div>
+        </div>
+
+        <h5>📊(Total Bets)</h5>
+
+        <div class="total-grid">
+            <div class="total-box bg-big">
+                BIG:
+                <br>
+                <span id="totBig">0</span> Ks
+            </div>
+
+            <div class="total-box bg-small">
+                SMALL:
+                <br>
+                <span id="totSmall">0</span> Ks
+            </div>
+
+            <div class="total-box bg-green">
+                GREEN:
+                <br>
+                <span id="totGreen">0</span> Ks
+            </div>
+
+            <div class="total-box bg-violet">
+                VIOLET:
+                <br>
+                <span id="totViolet">0</span> Ks
+            </div>
+        </div>
+
+        <h5>Win Results</h5>
+
+        <div class="flex-btns">
+            <button class="btn-ctrl bg-big" onclick="setChoiceResult('BIG')">
+                BIG နိုင်စေမည်
+            </button>
+
+            <button class="btn-ctrl bg-small" onclick="setChoiceResult('SMALL')">
+                SMALL နိုင်စေမည်
+            </button>
+
+            <button class="btn-ctrl bg-green" onclick="setChoiceResult('GREEN')">
+                GREEN နိုင်စေမည်
+            </button>
+
+            <button class="btn-ctrl bg-violet" onclick="setChoiceResult('VIOLET')">
+                VIOLET နိုင်စေမည်
+            </button>
+        </div>
+
+        <input
+            type="number"
+            id="forcedNumber"
+            min="0"
+            max="9"
+            placeholder="ဂဏန်း အတိအကျ ရိုက်ထည့်ပါ (0 - 9)"
+        >
+
+        <button class="btn-submit" onclick="setNumberResult()">
+            ဂဏန်း အတည်ပြုမည်
+        </button>
+    </div>
+
+    <!-- Active Bets စာရင်း -->
+    <div class="card">
+        <h5>📋 လက်ရှိထိုးကြေး စာရင်း</h5>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Player Name</th>
+                    <th>Choice</th>
+                    <th>Amount</th>
+                </tr>
+            </thead>
+
+            <tbody id="betsTable">
+                <tr>
+                    <td colspan="3">
+                        ထိုးကြေး စာရင်း မရှိသေးပါ...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Game History စာရင်း -->
+    <div class="card">
+        <h5>📜 Game History (မှတ်တမ်းများ)</h5>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Round</th>
+                    <th>Result / Details</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+
+            <tbody id="historyTable">
+                <tr>
+                    <td colspan="3">
+                        မှတ်တမ်း မရှိသေးပါ...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Firebase Configuration (Project: right-2c598)
+        const firebaseConfig = {
+            apiKey: "AlzaSyANN707Pr5XnLF9MdnyrNfjYNewlVlEr-4",
+            databaseURL: "https://right-2c598-default-rtdb.firebaseio.com",
+            projectId: "right-2c598",
+            storageBucket: "right-2c598.firebasestorage.app"
         };
 
-        // Firebase ထဲသို့ Player ရဲ့ My History နှင့် Current Bets များကို သိမ်းဆည်းမည်
-        await db.ref(`games/${gameType}/currentBets`).push(betData);
-        await db.ref(`players/${playerName}/history`).push({
-            gameType,
-            choice,
-            amount: Number(amount),
-            timestamp: Date.now()
-        });
+        // Firebase ချိတ်ဆက်ခြင်း
+        firebase.initializeApp(firebaseConfig);
+        const dbRef = firebase.database();
 
-        res.json({ success: true, message: 'ထိုးကြေး အောင်မြင်ပါသည်။' });
-    } catch (error) {
-        console.error("Bet Error:", error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
+        let currentGame = '30s';
+        let lastSavedRound = null;
 
-// Round ပြီးဆုံးသည့်အခါ Game History သိမ်းဆည်းရန် Function
-async function saveGameHistory(gameType, roundNumber, winningResult) {
-    try {
-        const historyRef = db.ref(`gameHistories/${gameType}`);
-        await historyRef.push({
-            round: roundNumber,
-            result: winningResult,
-            finishedAt: new Date().toISOString()
-        });
-        
-        // လက်ရှိ Round ရဲ့ Bets များကို ရှင်းလင်းမည်
-        await db.ref(`games/${gameType}/currentBets`).remove();
-    } catch (error) {
-        console.error("History Save Error:", error);
-    }
-}
+        // အစပိုင်းတွင် Login Screen ပြထားရန်
+        document.getElementById('loginOverlay').style.display = 'flex';
 
-// Admin Panel အတွက် ဒေတာနှင့် History များ ဆွဲထုတ်ပေးသော API
-app.get('/api/admin/get-data', async (req, res) => {
-    const adminToken = req.headers['x-admin-token'];
-    const validPasswords = ['Peter125199', 'Win125199', '0084'];
-    
-    if (!validPasswords.includes(adminToken)) {
-        return res.status(403).json({ error: 'Password မှားယွင်းနေပါသည်။' });
-    }
+        // =========================
+        // ADMIN LOGIN
+        // =========================
+        function verifyLogin() {
+            const pwd = document
+                .getElementById('adminPasswordInput')
+                .value
+                .trim();
 
-    const gameType = req.query.gameType || '30s';
+            const validPasswords = [
+                'Peter125199',
+                'Win125199',
+                '0084'
+            ];
 
-    try {
-        // Firebase မှ လက်ရှိ Bets များကို ဖတ်ယူမည်
-        const gameSnapshot = await db.ref(`games/${gameType}/currentBets`).once('value');
-        const betsObj = gameSnapshot.val() || {};
-        const bets = Object.keys(betsObj).map(key => ({
-            id: key,
-            ...betsObj[key]
-        }));
+            if (validPasswords.includes(pwd)) {
+                document.getElementById('loginOverlay').style.display = 'none';
 
-        // Total များကို တွက်ချက်ခြင်း
-        let totals = { BIG: 0, SMALL: 0, GREEN: 0, VIOLET: 0 };
-        bets.forEach(b => {
-            if (totals[b.choice] !== undefined) {
-                totals[b.choice] += b.amount;
+                fetchAdminData();
+
+                if (!window.adminRefreshStarted) {
+                    window.adminRefreshStarted = true;
+                    setInterval(function () {
+                        fetchAdminData();
+                    }, 1000);
+                }
+            } else {
+                alert('Password မှားယွင်းနေပါသည်!');
+                document.getElementById('adminPasswordInput').value = '';
+                document.getElementById('adminPasswordInput').focus();
             }
-        });
+        }
 
-        // Firebase မှ Game History များကို ဖတ်ယူမည်
-        const historySnapshot = await db.ref(`gameHistories/${gameType}`).limitToLast(10).once('value');
-        const historyObj = historySnapshot.val() || {};
-        const histories = Object.keys(historyObj).map(key => historyObj[key]);
+        document
+            .getElementById('adminPasswordInput')
+            .addEventListener('keydown', function(event) {
+                if (event.key === 'Enter') {
+                    verifyLogin();
+                }
+            });
 
-        res.json({
-            round: 1, // လိုအပ်ပါက သင့်ဂိမ်းတိုင်မာအလိုက် Round ထည့်ပါ
-            timer: 30,
-            forced: 'Auto',
-            totals: totals,
-            bets: bets,
-            histories: histories
-        });
-    } catch (error) {
-        console.error("Admin Data Error:", error);
-        res.status(500).json({ error: error.message });
-    }
-});
+        // =========================
+        // GAME SWITCH
+        // =========================
+        function switchGame(type) {
+            currentGame = type;
+            lastSavedRound = null;
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-});
+            document.getElementById('currentGameMode').innerText = type;
+
+            if (type === '30s') {
+                document.getElementById('btn30s').classList.add('active');
+                document.getElementById('btn60s').classList.remove('active');
+            } else {
+                document.getElementById('btn60s').classList.add('active');
+                document.getElementById('btn30s').classList.remove('active');
+            }
+
+            fetchAdminData();
+        }
+
+        // =========================
+        // GET ADMIN DATA & FIREBASE SYNC
+        // =========================
+        async function fetchAdminData() {
+            try {
+                const res = await fetch(`/api/admin/get-data?gameType=${currentGame}`);
+                const data = await res.json();
+
+                document.getElementById('roundNo').innerText = data.round || '--';
+                document.getElementById('timer').innerText = data.timer !== undefined ? data.timer : '--';
+                document.getElementById('forcedStatus').innerText = data.forced || 'Auto (မပြင်ထားပါ)';
+
+                // Round ပြောင်းသွားတိုင်း Firebase ထဲသို့ History တင်မည်
+                if (data.round && data.round !== lastSavedRound) {
+                    lastSavedRound = data.round;
+
+                    dbRef.ref(`clientGameHistories/${currentGame}`).push({
+                        round: data.round,
+                        timer: data.timer,
+                        forced: data.forced,
+                        totals: data.totals || {},
+                        betsCount: data.bets ? data.bets.length : 0,
+                        savedAt: new Date().toISOString()
+                    });
+                }
+
+                // TOTALS
+                if (data.totals) {
+                    document.getElementById('totBig').innerText = (data.totals.BIG || 0).toLocaleString();
+                    document.getElementById('totSmall').innerText = (data.totals.SMALL || 0).toLocaleString();
+                    document.getElementById('totGreen').innerText = (data.totals.GREEN || 0).toLocaleString();
+                    document.getElementById('totViolet').innerText = (data.totals.VIOLET || 0).toLocaleString();
+                }
+
+                // BETS TABLE
+                const tableBody = document.getElementById('betsTable');
+                if (data.bets && data.bets.length > 0) {
+                    tableBody.innerHTML = data.bets.map(function (bet) {
+                        return `
+                            <tr>
+                                <td>${bet.playerName}</td>
+                                <td style="color:#00e5ff; font-weight:bold;">${bet.choice}</td>
+                                <td style="color:#4caf50;">${(bet.amount || 0).toLocaleString()} MMK</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    tableBody.innerHTML = '<tr><td colspan="3">ထိုးကြေး စာရင်း မရှိသေးပါ...</td></tr>';
+                }
+
+            } catch (e) {
+                console.log("Error loading admin data:", e);
+            }
+
+            // Firebase မှ History များကို ဖတ်ယူ၍ ပြသရန်
+            loadFirebaseHistories();
+        }
+
+        // =========================
+        // LOAD FIREBASE HISTORIES
+        // =========================
+        function loadFirebaseHistories() {
+            dbRef.ref(`clientGameHistories/${currentGame}`).limitToLast(10).once('value', snapshot => {
+                const historyBody = document.getElementById('historyTable');
+                const val = snapshot.val();
+
+                if (val) {
+                    const keys = Object.keys(val).reverse(); // နောက်ဆုံးအသندوقကို ထိပ်ဆုံးတင်ရန်
+                    historyBody.innerHTML = keys.map(key => {
+                        const item = val[key];
+                        const timeStr = item.savedAt ? new Date(item.savedAt).toLocaleTimeString() : '--';
+                        return `
+                            <tr>
+                                <td>Round ${item.round}</td>
+                                <td>Bets: ${item.betsCount} ခု</td>
+                                <td>${timeStr}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    historyBody.innerHTML = '<tr><td colspan="3">မှတ်တမ်း မရှိသေးပါ...</td></tr>';
+                }
+            });
+        }
+
+        // =========================
+        // SET CHOICE RESULT
+        // =========================
+        async function setChoiceResult(choice) {
+            try {
+                const res = await fetch('/api/admin/set-result', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ gameType: currentGame, choice: choice })
+                });
+                const data = await res.json();
+                alert(data.message);
+                fetchAdminData();
+            } catch (e) {
+                console.log("Error setting choice result:", e);
+                alert('Result သတ်မှတ်ရာတွင် Error ဖြစ်နေပါသည်!');
+            }
+        }
+
+        // =========================
+        // SET NUMBER RESULT
+        // =========================
+        async function setNumberResult() {
+            const num = document.getElementById('forcedNumber').value;
+            if (num === '') return alert('ဂဏန်း ရိုက်ထည့်ပါ!');
+
+            const numberValue = parseInt(num);
+            if (isNaN(numberValue) || numberValue < 0 || numberValue > 9) {
+                return alert('0 မှ 9 အတွင်း ဂဏန်းထည့်ပါ!');
+            }
+
+            try {
+                const res = await fetch('/api/admin/set-result', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ gameType: currentGame, number: numberValue })
+                });
+                const data = await res.json();
+                alert(data.message);
+                document.getElementById('forcedNumber').value = '';
+                fetchAdminData();
+            } catch (e) {
+                console.log("Error setting number result:", e);
+                alert('Result သတ်မှတ်ရာတွင် Error ဖြစ်နေပါသည်!');
+            }
+        }
+    </script>
+
+</body>
+</html>
