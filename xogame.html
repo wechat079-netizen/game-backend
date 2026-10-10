@@ -9,8 +9,11 @@
     <style>
         body { font-family: sans-serif; background: #0f172a; color: #fff; text-align: center; padding: 15px; margin: 0; }
         .container { max-width: 420px; margin: 0 auto; background: #1e293b; padding: 20px; border-radius: 16px; box-shadow: 0 8px 20px rgba(0,0,0,0.5); border: 1px solid #334155; }
-        .header { display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 10px 15px; border-radius: 10px; margin-bottom: 15px; font-weight: bold; font-size: 14px; }
-        .balance { color: #10b981; }
+        
+        /* Header Layout: ဘယ်ဘက်မှာ နာမည်၊ ညာဘက်မှာ ငွေလက်ကျန် */
+        .header { display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 12px 18px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #334155; }
+        .user-info { display: flex; align-items: center; gap: 8px; font-weight: bold; font-size: 15px; color: #38bdf8; }
+        .balance-info { display: flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.15); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.3); color: #10b981; font-weight: bold; font-size: 14px; }
         
         #matchmaking-screen { display: block; }
         #game-screen { display: none; }
@@ -32,17 +35,21 @@
         .cell:active { background: #475569; }
         .info-text { font-size: 12px; color: #94a3b8; margin-top: 5px; text-align: center; }
         
-        .history-box { background: #0f172a; padding: 10px; border-radius: 10px; margin-top: 15px; text-align: left; max-height: 120px; overflow-y: auto; font-size: 12px; }
-        .history-item { padding: 4px 0; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; }
+        .history-box { background: #0f172a; padding: 10px; border-radius: 10px; margin-top: 15px; text-align: left; max-height: 120px; overflow-y: auto; font-size: 12px; border: 1px solid #334155; }
+        .history-item { padding: 5px 0; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <!-- Header: Name & Balance (UID လုံးဝမပြပါ) -->
+        <!-- Header: ဘယ်ဘက်တွင် နာမည်၊ ညာဘက်တွင် ငွေလက်ကျန် -->
         <div class="header">
-            <span>👤 <span id="username">Loading...</span></span>
-            <span class="balance" id="user-money">Loading...</span>
+            <div class="user-info">
+                <span>👤</span> <span id="username">Loading...</span>
+            </div>
+            <div class="balance-info">
+                <span>💰</span> <span id="user-money">Loading...</span>
+            </div>
         </div>
 
         <!-- 1. Matchmaking Screen -->
@@ -103,7 +110,6 @@
         const urlParams = new URLSearchParams(window.location.search);
         let uid = urlParams.get('uid');
 
-        // URL တွင် UID မပါလာပါက Database မှ Active ဖြစ်သော User တစ်ဦးကို အလိုအလျောက် ယူမည်
         if (!uid) {
             db.ref('user').limitToFirst(1).once('value', (snapshot) => {
                 if (snapshot.exists()) {
@@ -128,7 +134,6 @@
         let turn = "X";
         let gameOver = false;
         let rewardProcessed = false;
-        let disconnectTimer = null;
 
         function initUserAndGame() {
             activeRoomId = localStorage.getItem("activeRoomId_" + uid) || null;
@@ -144,7 +149,6 @@
                 }
             });
 
-            // Name နှင့် Money ကိုသာ ဖော်ပြရန် (UID လုံးဝမပြပါ)
             userRef.on('value', (snapshot) => {
                 if(snapshot.exists()) {
                     const userData = snapshot.val();
@@ -156,7 +160,6 @@
                 }
             });
 
-            // Load Match History
             loadMatchHistory();
 
             if (activeRoomId) {
@@ -305,7 +308,6 @@
             document.getElementById("game-screen").style.display = "block";
             rewardProcessed = false;
 
-            // Heartbeat: ကိုယ် Online ရှိနေကြောင်း အမြဲ update လုပ်မည်
             const heartbeatInterval = setInterval(() => {
                 if (activeRoomId && !gameOver) {
                     db.ref(`matchmaking/rooms/${activeRoomId}/lastActive_${myRole}`).set(Date.now());
@@ -324,11 +326,9 @@
 
                 updateGameUI();
 
-                // ပြိုင်ဘက် လိုင်းကျခြင်းကို ၁၀ စက္ကန့် စောင့်စစ်ဆေးခြင်း
                 const opponentRole = (myRole === "X") ? "O" : "X";
                 const oppLastActive = data[`lastActive_${opponentRole}`] || 0;
                 if (!gameOver && data.status === "playing" && (Date.now() - oppLastActive > 12000)) {
-                    // ၁၂ စက္ကန့်ကျော် လှုပ်ရှားမှုမရှိပါက ပြိုင်ဘက် လိုင်းကျသည်ဟု ယူဆပြီး အနိုင်ပေးမည်
                     db.ref(`matchmaking/rooms/${activeRoomId}`).update({
                         gameOver: true,
                         winner: myRole
