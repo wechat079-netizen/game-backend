@@ -24,11 +24,9 @@ if (process.env.FIREBASE_CONFIG) {
   console.log("WARNING: FIREBASE_CONFIG is missing in Environment Variables!");
 }
 
-// Memory Stores
+// Memory Stores (Active Bets အတွက်သာ ယာယီသုံးမည်)
 let activeBets = { '30s': [], '60s': [] };
 let forcedResults = { '30s': null, '60s': null };
-let gameHistory = { '30s': [], '60s': [] };
-let userBetsHistory = {}; 
 
 // -------------------------------------------------------------
 // Auto Game Loop Engine (စက္ကန့်အလိုက် Result ထုတ်ပေးခြင်း)
@@ -88,11 +86,15 @@ function startGameEngine(gameType) {
       }
       resultBS = winningNumber >= 5 ? "BIG" : "SMALL";
 
-      // Game History ထဲသို့ အသစ် ထည့်သွင်းခြင်း
-      const historyItem = { round: currentRound, number: winningNumber, bs: resultBS, color: resultColor };
-      if (!gameHistory[gameType]) gameHistory[gameType] = [];
-      gameHistory[gameType].unshift(historyItem);
-      if (gameHistory[gameType].length > 30) gameHistory[gameType].pop();
+      // Game History ကို Firebase ထဲသို့ တိုက်ရိုက်သိမ်းဆည်းခြင်း (ပျောက်မသွားစေရန်)
+      const historyItem = { round: currentRound, number: winningNumber, bs: resultBS, color: resultColor, time: Date.now() };
+      if (admin.apps.length > 0) {
+        try {
+          await admin.database().ref(`gameHistory/${gameType}`).push(historyItem);
+        } catch (e) {
+          console.log("Save Game History to Firebase Error:", e.message);
+        }
+      }
 
       // Bet တင်ထားသူများကို ငွေရှင်းပေးခြင်း
       await settleBetsEngine(gameType, currentRound, winningNumber, resultColor, resultBS);
@@ -120,7 +122,7 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
     
     for (let bet of currentBets) {
       let userId = bet.uid;
-      let betIndex = bet.betIndex;
+      let betKey = bet.betKey; // Firebase ထဲက key
       let amount = parseFloat(bet.amount || 0);
       let choice = String(bet.choice || '').trim().toUpperCase();
       let isWin = false;
@@ -135,9 +137,13 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
 
       bet.status = isWin ? 'Win' : 'Lose';
 
-      if (userBetsHistory[userId]) {
-        let uBet = userBetsHistory[userId].find(b => b.round === roundNumber && b.gameType === gameType && b.betIndex === betIndex);
-        if (uBet) uBet.status = bet.status;
+      // Firebase ရှိ userBetsHistory ထဲတွင် Status တန်းပြောင်းပေးရန်
+      if (admin.apps.length > 0 && userId && betKey) {
+        try {
+          await admin.database().ref(`userBetsHistory/${userId}/${betKey}`).update({ status: bet.status });
+        } catch (e) {
+          console.log("Update Bet Status Error:", e.message);
+        }
       }
 
       if (isWin) {
@@ -161,7 +167,7 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
 // -------------------------------------------------------------
 // 1. APP / USER ENDPOINTS
 // -------------------------------------------------------------
-app.get('/api/user/get-data', (req, res) => {
+app.get('/api/user/get-data', async (req, res) => {
   const gameType = req.query.gameType || '30s';
   const uid = req.query.uid;
   const interval = gameType === '30s' ? 30 : 60;
@@ -170,12 +176,32 @@ app.get('/api/user/get-data', (req, res) => {
   const currentRound = Math.floor(nowSec / interval);
   const timer = interval - (nowSec % interval);
   
+  let gameHistoryList = [];
   let myHistory = [];
-  if (uid && userBetsHistory[uid]) {
-    myHistory = userBetsHistory[uid].filter(b => b.gameType === gameType).slice(0, 20);
+
+  if (admin.apps.length > 0) {
+    try {
+      // Firebase မှ Game History များကို ဆွဲထုတ်ခြင်း
+      const ghSnap = await admin.database().ref(`gameHistory/${gameType}`).limitToLast(30).once('value');
+      if (ghSnap.exists()) {
+        const val = ghSnap.val();
+        gameHistoryList = Object.values(val).reverse();
+      }
+
+      // Firebase မှ User ၏ My History များကို ဆွဲထုတ်ခြင်း
+      if (uid) {
+        const ubSnap = await admin.database().ref(`userBetsHistory/${uid}`).limitToLast(20).once('value');
+        if (ubSnap.exists()) {
+          const val = ubSnap.val();
+          myHistory = Object.values(val).filter(b => b.gameType === gameType).reverse();
+        }
+      }
+    } catch (e) {
+      console.log("Fetch History from Firebase Error:", e.message);
+    }
   }
   
-  res.json({ round: currentRound, timer: timer, history: gameHistory[gameType] || [], myHistory: myHistory });
+  res.json({ round: currentRound, timer: timer, history: gameHistoryList, myHistory: myHistory });
 });
 
 app.post('/api/place-bet', async (req, res) => {
@@ -224,13 +250,10 @@ app.post('/api/place-bet', async (req, res) => {
     });
   }
 
-  if (!userBetsHistory[uid]) userBetsHistory[uid] = [];
-  let existingRoundBetsCount = userBetsHistory[uid].filter(b => b.round === currentRound && b.gameType === type).length;
-  let betIndex = existingRoundBetsCount + 1;
-  
+  // Firebase တွင် My History သိမ်းဆည်းရန်အတွက် Reference ဖန်တီးခြင်း
+  let betKey = "";
   const betData = { 
     round: currentRound, 
-    betIndex: betIndex, 
     playerName: playerName, 
     choice: String(choice).trim().toUpperCase(), 
     amount: betAmount, 
@@ -238,11 +261,20 @@ app.post('/api/place-bet', async (req, res) => {
     status: 'Pending', 
     time: Date.now() 
   };
-  
-  activeBets[type].push({ uid, ...betData });
-  userBetsHistory[uid].unshift(betData);
 
-  return res.json({ success: true, message: `ထိုးကြေးအမှတ်စဉ် #${betIndex} အောင်မြင်စွာ တင်ပြီးပါပြီ!` });
+  if (admin.apps.length > 0) {
+    try {
+      const newRef = admin.database().ref(`userBetsHistory/${uid}`).push();
+      betKey = newRef.key;
+      await newRef.set(betData);
+    } catch (e) {
+      console.log("Save Bet to Firebase Error:", e.message);
+    }
+  }
+  
+  activeBets[type].push({ uid, betKey, ...betData });
+
+  return res.json({ success: true, message: `ထိုးကြေး တင်သွင်းမှု အောင်မြင်စွာ ပြီးစီးပါပြီ!` });
 });
 
 // 2. ADMIN ENDPOINTS
@@ -258,12 +290,12 @@ app.get('/api/admin/get-data', (req, res) => {
   let totals = { BIG: 0, SMALL: 0, GREEN: 0, VIOLET: 0 };
   let formattedBets = [];
 
-  bets.forEach(b => {
+  bets.forEach((b, index) => {
     const c = b.choice.toUpperCase();
     if (totals[c] !== undefined) totals[c] += b.amount;
 
     formattedBets.push({
-      playerName: `${b.playerName} #${b.betIndex}`, 
+      playerName: `${b.playerName} #${index + 1}`, 
       choice: b.choice,
       amount: b.amount,
       status: b.status,
