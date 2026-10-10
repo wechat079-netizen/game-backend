@@ -3,151 +3,499 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Game Admin Panel</title>
-    <!-- Firebase CDN (Compat Versions) -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <title>Game Control Panel</title>
     <style>
-        body { font-family: sans-serif; background: #f4f6f9; margin: 0; padding: 20px; }
-        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        h2 { color: #333; }
-        .login-box { text-align: center; margin-top: 100px; }
-        .login-box input { padding: 10px; font-size: 16px; width: 250px; border: 1px solid #ccc; border-radius: 4px; }
-        .login-box button { padding: 10px 20px; font-size: 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; display: block; margin-left: auto; margin-right: auto; }
-        .hidden { display: none !important; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 14px; }
-        th { background: #007bff; color: white; }
-        .btn { padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        body { font-family: sans-serif; background-color: #12151e; color: #ffffff; margin: 0; padding: 15px; }
+        .card { background: #1a1e29; padding: 20px; border-radius: 12px; border: 1px solid #2a3040; margin-bottom: 15px; }
+        h2, h3 { text-align: center; color: #00e5ff; margin-top: 0; }
+        .tab-container { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab-btn { flex: 1; padding: 12px; border: none; background: #2a3040; color: #8a99ad; font-weight: bold; border-radius: 8px; cursor: pointer; font-size: 16px; }
+        .tab-btn.active { background: #00e5ff; color: #000; }
+        .info-box { background: #11141d; padding: 15px; border-radius: 8px; border-left: 4px solid #00e5ff; margin-bottom: 20px; }
+
+        .total-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; }
+        .total-box { padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; }
+        .bg-big { background: #c62828; }
+        .bg-small { background: #2e7d32; }
+        .bg-green { background: #388e3c; }
+        .bg-violet { background: #7b1fa2; }
+
+        .flex-btns { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+        .btn-ctrl { flex: 1; min-width: 45%; padding: 12px; border: none; border-radius: 8px; color: #fff; font-weight: bold; cursor: pointer; }
+        input { width: 100%; padding: 12px; margin-top: 10px; box-sizing: border-box; background: #11141d; border: 1px solid #2a3040; color: #fff; border-radius: 8px; }
+        .btn-submit { width: 100%; background: #00e5ff; color: #000; padding: 12px; border: none; border-radius: 8px; font-weight: bold; margin-top: 10px; cursor: pointer; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #2a3040; padding: 10px; text-align: center; font-size: 13px; }
+        th { background: #11141d; color: #00e5ff; }
+
+        #loginOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(18, 21, 30, 0.95);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+        }
+
+        .login-card {
+            background: #1a1e29;
+            padding: 30px;
+            border-radius: 12px;
+            border: 1px solid #2a3040;
+            width: 300px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
 
-    <!-- Login Section -->
-    <div id="loginSection" class="login-box">
-        <h3>🔐 Admin Login</h3>
-        <p>Password ထည့်ပါ</p>
-        <input type="password" id="adminPasswordInput" placeholder="Admin125199*">
-        <button onclick="simpleLogin()">ဝင်မည်</button>
+    <!-- Login Screen -->
+    <div id="loginOverlay">
+        <div class="login-card">
+            <h3>🔐 Admin Login</h3>
+
+            <p style="font-size: 13px; color: #8a99ad;">
+                Admin Password ရိုက်ထည့်ပါ
+            </p>
+
+            <input
+                type="password"
+                id="adminPasswordInput"
+                placeholder="Password"
+                autocomplete="off"
+            >
+
+            <button class="btn-submit" onclick="verifyLogin()">
+                ဝင်မည်
+            </button>
+        </div>
     </div>
 
-    <!-- Admin Dashboard Section -->
-    <div id="adminDashboard" class="container hidden">
-        <h2>🎮 Game Admin Dashboard</h2>
-        <p>Status: <span id="serverTimer" style="font-weight: bold; color: green;">Loading...</span></p>
-        
-        <hr>
-        <h3>Active Bets (လက်ရှိထိုးကြေးများ)</h3>
-        <div style="margin-bottom: 10px;">
-            <button class="btn" onclick="switchGame('30s')">30s Game</button>
-            <button class="btn" onclick="switchGame('60s')" style="background: #17a2b8;">60s Game</button>
-            <span id="currentGameLabel" style="margin-left: 10px; font-weight: bold;">Current: 30s</span>
+    <div class="card">
+        <h5>Super Admin</h5>
+
+        <div class="tab-container">
+            <button id="btn30s" class="tab-btn active" onclick="switchGame('30s')">
+                30 Seconds Game
+            </button>
+
+            <button id="btn60s" class="tab-btn" onclick="switchGame('60s')">
+                60 Seconds Game
+            </button>
         </div>
+
+        <div class="info-box">
+            <div>
+                လက်ရှိ Game Mode:
+                <span id="currentGameMode" style="color:#00e5ff; font-weight:bold;">
+                    30s
+                </span>
+            </div>
+            <div>
+                လက်ရှိ Round:
+                <span id="roundNo" style="color:#ff9800; font-weight:bold;">
+                    --
+                </span>
+            </div>
+            <div>
+                ကျန်ရှိချိန်:
+                <span id="timer" style="color:#00e5ff; font-size:18px; font-weight:bold;">
+                    --
+                </span>
+                စက္ကန့်
+            </div>
+
+            <div>
+                Result:
+                <span id="forcedStatus" style="color:#ff9800;">
+                    Auto (မပြင်ထားပါ)
+                </span>
+            </div>
+        </div>
+
+        <h5>📊(Total Bets)</h5>
+
+        <div class="total-grid">
+            <div class="total-box bg-big">
+                BIG:
+                <br>
+                <span id="totBig">0</span> Ks
+            </div>
+
+            <div class="total-box bg-small">
+                SMALL:
+                <br>
+                <span id="totSmall">0</span> Ks
+            </div>
+
+            <div class="total-box bg-green">
+                GREEN:
+                <br>
+                <span id="totGreen">0</span> Ks
+            </div>
+
+            <div class="total-box bg-violet">
+                VIOLET:
+                <br>
+                <span id="totViolet">0</span> Ks
+            </div>
+        </div>
+
+        <h5>Win Results</h5>
+
+        <div class="flex-btns">
+            <button class="btn-ctrl bg-big" onclick="setChoiceResult('BIG')">
+                BIG နိုင်စေမည်
+            </button>
+
+            <button class="btn-ctrl bg-small" onclick="setChoiceResult('SMALL')">
+                SMALL နိုင်စေမည်
+            </button>
+
+            <button class="btn-ctrl bg-green" onclick="setChoiceResult('GREEN')">
+                GREEN နိုင်စေမည်
+            </button>
+
+            <button class="btn-ctrl bg-violet" onclick="setChoiceResult('VIOLET')">
+                VIOLET နိုင်စေမည်
+            </button>
+        </div>
+
+        <input
+            type="number"
+            id="forcedNumber"
+            min="0"
+            max="9"
+            placeholder="ဂဏန်း အတိအကျ ရိုက်ထည့်ပါ (0 - 9)"
+        >
+
+        <button class="btn-submit" onclick="setNumberResult()">
+            ဂဏန်း အတည်ပြုမည်
+        </button>
+    </div>
+
+    <div class="card">
+        <h5>📋စရင်</h5>
 
         <table>
             <thead>
                 <tr>
-                    <th>Round</th>
                     <th>Player Name</th>
                     <th>Choice</th>
                     <th>Amount</th>
-                    <th>Status</th>
                 </tr>
             </thead>
-            <tbody id="betsTableBody">
-                <tr><td colspan="5">ဒေတာ ရယူနေသည်...</td></tr>
+
+            <tbody id="betsTable">
+                <tr>
+                    <td colspan="3">
+                        ထိုးကြေး စာရင်း မရှိသေးပါ...
+                    </td>
+                </tr>
             </tbody>
         </table>
     </div>
 
     <script>
-        // သင့်ရဲ့ google-services.json ဖိုင်ထဲက အချက်အလက်များဖြင့် တိုက်ရိုက်ထည့်သွင်းပြီးပါပြီ[span_2](start_span)[span_2](end_span)
-        const firebaseConfig = {
-            apiKey: "AlzaSyANN707Pr5XnLF9MdnyrNfjYNewlVlEr-4",[span_3](start_span)[span_3](end_span)
-            databaseURL: "https://right-2c598-default-rtdb.firebaseio.com",[span_4](start_span)[span_4](end_span)
-            projectId: "right-2c598",[span_5](start_span)[span_5](end_span)
-            storageBucket: "right-2c598.firebasestorage.app[span_6](start_span)"[span_6](end_span)
-        };
+        let currentGame = '30s';
 
-        // Firebase ကို စတင်ချိတ်ဆက်ခြင်း
-        firebase.initializeApp(firebaseConfig);
-        const dbRef = firebase.database();
+        // App / Page ဖွင့်တိုင်း Login Screen ပြမည်
+        document.getElementById('loginOverlay').style.display = 'flex';
 
-        let currentGameType = '30s';
-        let globalPassword = '';
-        let refreshTimer;
+        // =========================
+        // ADMIN LOGIN
+        // =========================
+        function verifyLogin() {
+            const pwd = document
+                .getElementById('adminPasswordInput')
+                .value
+                .trim();
 
-        function simpleLogin() {
-            const pwd = document.getElementById('adminPasswordInput').value;
-            
-            if (pwd === "Admin125199*") {
-                globalPassword = pwd;
-                document.getElementById('loginSection').classList.add('hidden');
-                document.getElementById('adminDashboard').classList.remove('hidden');
-                
-                fetchData();
-                clearInterval(refreshTimer);
-                refreshTimer = setInterval(fetchData, 2000); // ၂ စက္ကန့်တစ်ကြိမ် ဒေတာဆွဲမည်
+            const validPasswords = [
+                'Peter125199',
+                'Win125199',
+                '0084'
+            ];
+
+            if (validPasswords.includes(pwd)) {
+
+                // Login Screen ဖျောက်မည်
+                document.getElementById('loginOverlay').style.display = 'none';
+
+                // API Data စတင်ယူမည်
+                fetchAdminData();
+
+                // Duplicate interval မဖြစ်အောင် တစ်ကြိမ်ပဲစမည်
+                if (!window.adminRefreshStarted) {
+                    window.adminRefreshStarted = true;
+
+                    setInterval(function () {
+                        fetchAdminData();
+                    }, 1000);
+                }
+
             } else {
-                alert('Password မှားယွင်းနေပါသည်။');
+
+                alert('Password မှားယွင်းနေပါသည်!');
+
+                document.getElementById('adminPasswordInput').value = '';
+
+                document.getElementById('adminPasswordInput').focus();
             }
         }
 
-        function fetchData() {
-            if (!globalPassword) return;
+        // Enter နှိပ်ပြီး Login ဝင်နိုင်မည်
+        document
+            .getElementById('adminPasswordInput')
+            .addEventListener('keydown', function(event) {
 
-            fetch(`/api/admin/get-data?gameType=${currentGameType}`, {
-                headers: { 'x-admin-token': globalPassword }
-            })
-            .then(res => {
-                if (!res.ok) throw new Error('ဒေတာ ရယူ၍ မရပါ။');
-                return res.json();
-            })
-            .then(data => {
-                // ၁။ Dashboard ပေါ်တွင် ဒေတာပြသရန်
-                renderDashboard(data);
+                if (event.key === 'Enter') {
+                    verifyLogin();
+                }
 
-                // ၂။ Server မှရလာသော ဒေတာများကို Firebase ထဲသို့ တိုက်ရိုက်သိမ်းရန်
-                dbRef.ref(`clientGameHistories/${currentGameType}`).push({
-                    round: data.round,
-                    timer: data.timer,
-                    forced: data.forced,
-                    betsCount: data.bets ? data.bets.length : 0,
-                    savedAt: new Date().toISOString()
-                });
-            })
-            .catch(err => console.log(err));
-        }
-
-        function renderDashboard(data) {
-            document.getElementById('serverTimer').innerText = `Round: ${data.round} | Timer: ${data.timer}s | Forced: ${data.forced}`;
-            
-            let tbody = document.getElementById('betsTableBody');
-            tbody.innerHTML = '';
-
-            if (!data.bets || data.bets.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5">လက်ရှိ ထိုးကြေး မရှိသေးပါ။</td></tr>`;
-                return;
-            }
-
-            data.bets.forEach(b => {
-                let tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${b.round}</td>
-                    <td>${b.playerName}</td>
-                    <td><b>${b.choice}</b></td>
-                    <td>${b.amount}</td>
-                    <td>${b.status}</td>
-                `;
-                tbody.appendChild(tr);
             });
+
+
+        // =========================
+        // GAME SWITCH
+        // =========================
+        function switchGame(type) {
+
+            currentGame = type;
+
+            document.getElementById('currentGameMode').innerText = type;
+
+            if (type === '30s') {
+
+                document
+                    .getElementById('btn30s')
+                    .classList.add('active');
+
+                document
+                    .getElementById('btn60s')
+                    .classList.remove('active');
+
+            } else {
+
+                document
+                    .getElementById('btn60s')
+                    .classList.add('active');
+
+                document
+                    .getElementById('btn30s')
+                    .classList.remove('active');
+            }
+
+            fetchAdminData();
         }
 
-        function switchGame(type) {
-            currentGameType = type;
-            document.getElementById('currentGameLabel').innerText = `Current: ${type}`;
-            fetchData();
+
+        // =========================
+        // GET ADMIN DATA
+        // =========================
+        async function fetchAdminData() {
+
+            try {
+
+                const res = await fetch(
+                    `/api/admin/get-data?gameType=${currentGame}`
+                );
+
+                const data = await res.json();
+
+                document.getElementById('roundNo').innerText =
+                    data.round || '--';
+
+                document.getElementById('timer').innerText =
+                    data.timer !== undefined
+                        ? data.timer
+                        : '--';
+
+                document.getElementById('forcedStatus').innerText =
+                    data.forced || 'Auto (မပြင်ထားပါ)';
+
+
+                // =========================
+                // TOTALS
+                // =========================
+                if (data.totals) {
+
+                    document.getElementById('totBig').innerText =
+                        (data.totals.BIG || 0).toLocaleString();
+
+                    document.getElementById('totSmall').innerText =
+                        (data.totals.SMALL || 0).toLocaleString();
+
+                    document.getElementById('totGreen').innerText =
+                        (data.totals.GREEN || 0).toLocaleString();
+
+                    document.getElementById('totViolet').innerText =
+                        (data.totals.VIOLET || 0).toLocaleString();
+                }
+
+
+                // =========================
+                // BETS TABLE
+                // =========================
+                const tableBody =
+                    document.getElementById('betsTable');
+
+                if (data.bets && data.bets.length > 0) {
+
+                    tableBody.innerHTML = data.bets.map(function (bet) {
+
+                        return `
+                            <tr>
+                                <td>${bet.playerName}</td>
+
+                                <td style="
+                                    color:#00e5ff;
+                                    font-weight:bold;
+                                ">
+                                    ${bet.choice}
+                                </td>
+
+                                <td style="
+                                    color:#4caf50;
+                                ">
+                                    ${(bet.amount || 0).toLocaleString()} MMK
+                                </td>
+                            </tr>
+                        `;
+
+                    }).join('');
+
+                } else {
+
+                    tableBody.innerHTML =
+                        '<tr><td colspan="3">ထိုးကြေး စာရင်း မရှိသေးပါ...</td></tr>';
+                }
+
+            } catch (e) {
+
+                console.log(
+                    "Error loading admin data:",
+                    e
+                );
+            }
+        }
+
+
+        // =========================
+        // SET CHOICE RESULT
+        // =========================
+        async function setChoiceResult(choice) {
+
+            try {
+
+                const res = await fetch(
+                    '/api/admin/set-result',
+                    {
+                        method: 'POST',
+
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+
+                        body: JSON.stringify({
+                            gameType: currentGame,
+                            choice: choice
+                        })
+                    }
+                );
+
+                const data = await res.json();
+
+                alert(data.message);
+
+                fetchAdminData();
+
+            } catch (e) {
+
+                console.log(
+                    "Error setting choice result:",
+                    e
+                );
+
+                alert('Result သတ်မှတ်ရာတွင် Error ဖြစ်နေပါသည်!');
+            }
+        }
+
+
+        // =========================
+        // SET NUMBER RESULT
+        // =========================
+        async function setNumberResult() {
+
+            const num =
+                document.getElementById('forcedNumber').value;
+
+            if (num === '') {
+
+                return alert(
+                    'ဂဏန်း ရိုက်ထည့်ပါ!'
+                );
+            }
+
+            const numberValue = parseInt(num);
+
+            if (
+                isNaN(numberValue) ||
+                numberValue < 0 ||
+                numberValue > 9
+            ) {
+
+                return alert(
+                    '0 မှ 9 အတွင်း ဂဏန်းထည့်ပါ!'
+                );
+            }
+
+            try {
+
+                const res = await fetch(
+                    '/api/admin/set-result',
+                    {
+                        method: 'POST',
+
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+
+                        body: JSON.stringify({
+                            gameType: currentGame,
+                            number: numberValue
+                        })
+                    }
+                );
+
+                const data = await res.json();
+
+                alert(data.message);
+
+                document.getElementById(
+                    'forcedNumber'
+                ).value = '';
+
+                fetchAdminData();
+
+            } catch (e) {
+
+                console.log(
+                    "Error setting number result:",
+                    e
+                );
+
+                alert(
+                    'Result သတ်မှတ်ရာတွင် Error ဖြစ်နေပါသည်!'
+                );
+            }
         }
     </script>
+
 </body>
 </html>
