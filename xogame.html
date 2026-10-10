@@ -13,7 +13,6 @@
         .header { display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 12px 18px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #334155; }
         .user-info { display: flex; align-items: center; gap: 8px; font-weight: bold; font-size: 15px; color: #38bdf8; }
         
-        /* Balance & Refresh Button Styles */
         .right-header { display: flex; align-items: center; gap: 8px; }
         .balance-info { display: flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.15); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.3); color: #10b981; font-weight: bold; font-size: 14px; }
         .refresh-btn { background: #334155; border: 1px solid #475569; color: #38bdf8; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; transition: 0.3s; }
@@ -46,7 +45,7 @@
 <body>
 
     <div class="container">
-        <!-- Header: ဘယ်ဘက် နာမည်၊ ညာဘက် ငွေလက်ကျန်နှင့် Refresh ခလုတ် -->
+        <!-- Header -->
         <div class="header">
             <div class="user-info">
                 <span>👤</span> <span id="username">Loading...</span>
@@ -126,47 +125,36 @@
         let gameOver = false;
         let rewardProcessed = false;
 
-        // Firebase မှ User အချက်အလက် (Sketchware Map Key 'name' နှင့် 'money' တို့ကို ချိန်ညှိထားသည်)[span_1](start_span)[span_1](end_span)
         const userRef = db.ref(`user/${uid}`);
         
         userRef.on('value', (snapshot) => {
             if(snapshot.exists()) {
                 const userData = snapshot.val();
-                
                 currentMoney = userData.money || 0;
                 document.getElementById("user-money").innerText = currentMoney.toLocaleString() + " MMK";
-                
                 if(userData.name) {
                     document.getElementById("username").innerText = userData.name;
-                } else if(userData.username) {
-                    document.getElementById("username").innerText = userData.username;
                 } else {
                     document.getElementById("username").innerText = "User_" + uid.slice(-4);
                 }
             } else {
-                userRef.set({
-                    name: "Player_" + uid.slice(-4),
-                    money: 10000 
-                });
+                userRef.set({ name: "Player_" + uid.slice(-4), money: 10000 });
             }
         });
 
         loadMatchHistory();
 
-        // 🔄 Manual Refresh ခလုတ်နှိပ်သည့်အခါ Data ကို အသစ်ပြန်လည်ဆွဲထုတ်မည်
         function manualRefresh() {
             userRef.once('value', (snapshot) => {
                 if(snapshot.exists()) {
                     const userData = snapshot.val();
                     currentMoney = userData.money || 0;
                     document.getElementById("user-money").innerText = currentMoney.toLocaleString() + " MMK";
-                    if(userData.name) {
-                        document.getElementById("username").innerText = userData.name;
-                    }
+                    if(userData.name) document.getElementById("username").innerText = userData.name;
                 }
             });
             loadMatchHistory();
-            alert("🔄 အချက်အလက်များကို အောင်မြင်စွာ Refresh လုပ်ပြီးပါပြီ!");
+            alert("🔄 အချက်အလက်များကို Refresh လုပ်ပြီးပါပြီ!");
         }
 
         function loadMatchHistory() {
@@ -200,7 +188,6 @@
 
         function findMatch() {
             selectedBet = parseInt(document.getElementById("bet-amount").value);
-            
             if (currentMoney < selectedBet) {
                 alert("ငွေလက်ကျန် မလုံလောက်ပါ။");
                 return;
@@ -259,8 +246,7 @@
                         board: ["","","","","","","","",""],
                         turn: "X",
                         gameOver: false,
-                        winner: "",
-                        lastActive: Date.now()
+                        winner: ""
                     });
 
                     db.ref(`matchmaking/queue/${activeRoomId}`).set({
@@ -301,36 +287,18 @@
             document.getElementById("game-screen").style.display = "block";
             rewardProcessed = false;
 
-            const heartbeatInterval = setInterval(() => {
-                if (activeRoomId && !gameOver) {
-                    db.ref(`matchmaking/rooms/${activeRoomId}/lastActive_${myRole}`).set(Date.now());
-                } else {
-                    clearInterval(heartbeatInterval);
-                }
-            }, 3000);
-
             db.ref(`matchmaking/rooms/${activeRoomId}`).on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (!data) return;
 
-                boardState = data.board;
-                turn = data.turn;
-                gameOver = data.gameOver;
+                boardState = data.board || ["","","","","","","","",""];
+                turn = data.turn || "X";
+                gameOver = data.gameOver || false;
 
                 updateGameUI();
 
-                const opponentRole = (myRole === "X") ? "O" : "X";
-                const oppLastActive = data[`lastActive_${opponentRole}`] || 0;
-                if (!gameOver && data.status === "playing" && (Date.now() - oppLastActive > 12000)) {
-                    db.ref(`matchmaking/rooms/${activeRoomId}`).update({
-                        gameOver: true,
-                        winner: myRole
-                    });
-                }
-
                 if (gameOver && !rewardProcessed) {
                     rewardProcessed = true;
-                    clearInterval(heartbeatInterval);
                     
                     if (data.winner === myRole) {
                         let payout = Math.floor(data.bet * 1.9);
@@ -391,8 +359,7 @@
                 board: boardState,
                 turn: turn,
                 gameOver: isGameOver,
-                winner: winningSymbol,
-                [`lastActive_${myRole}`]: Date.now()
+                winner: winningSymbol
             });
         }
 
