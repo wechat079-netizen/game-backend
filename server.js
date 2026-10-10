@@ -5,7 +5,7 @@ const admin = require('firebase-admin');
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-
+app.use(express.static(__dirname));
 // -------------------------------------------------------------
 // Firebase Admin Setup (Project: right-2c598)
 // -------------------------------------------------------------
@@ -335,6 +335,10 @@ app.post('/api/admin/set-result', (req, res) => {
 
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+// /xogame လို့ ခေါ်လိုက်ရင် xogame.html ကို ပြရန်
+app.get('/xogame', (req, res) => {
+    res.sendFile(path.join(__dirname, 'xogame.html'));
 });
 
 const PORT = process.env.PORT || 3000;
