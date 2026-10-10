@@ -31,12 +31,15 @@
         .cell { background: #334155; height: 95px; font-size: 45px; font-weight: bold; display: flex; align-items: center; justify-content: center; border-radius: 8px; cursor: pointer; color: #f8fafc; }
         .cell:active { background: #475569; }
         .info-text { font-size: 12px; color: #94a3b8; margin-top: 5px; text-align: center; }
+        
+        .history-box { background: #0f172a; padding: 10px; border-radius: 10px; margin-top: 15px; text-align: left; max-height: 120px; overflow-y: auto; font-size: 12px; }
+        .history-item { padding: 4px 0; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <!-- Header: Balance -->
+        <!-- Header: Name & Balance (UID လုံးဝမပြပါ) -->
         <div class="header">
             <span>👤 <span id="username">Loading...</span></span>
             <span class="balance" id="user-money">Loading...</span>
@@ -64,6 +67,12 @@
                 <p id="search-status">လောင်းကြေးတူ ပြိုင်ဘက် ရှာဖွေနေသည်...</p>
                 <button class="btn btn-danger" onclick="cancelSearch()">ပွဲရှာဖွေခြင်း ဖျက်သိမ်းမည်</button>
             </div>
+
+            <!-- Match History Section -->
+            <div class="history-box" id="history-box">
+                <div style="font-weight: bold; color: #38bdf8; margin-bottom: 4px;">📜 ကစားခဲ့သော မှတ်တမ်းများ</div>
+                <div id="history-list" style="color: #94a3b8;">မှတ်တမ်း မရှိသေးပါ။</div>
+            </div>
         </div>
 
         <!-- 2. Game Screen -->
@@ -80,7 +89,7 @@
                 <div class="cell" onclick="makeMove(7)"></div>
                 <div class="cell" onclick="makeMove(8)"></div>
             </div>
-            <div class="info-text" style="color: #ef4444; margin-top: 10px;">⚠️ ပွဲစနေစဉ် မထွက်ရပါ</div>
+            <div class="info-text" style="color: #ef4444; margin-top: 10px;">⚠️ ပွဲစနေစဉ် မထွက်ရပါ (လိုင်းကျပါက ၁၀ စက္ကန့်အတွင်း ပြန်မဝင်ပါက ရှုံးမည်)</div>
         </div>
     </div>
 
@@ -91,37 +100,51 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // URL ထဲမှ ?uid= ပါလာသည်ကို ဖမ်းယူခြင်း
         const urlParams = new URLSearchParams(window.location.search);
-        const uid = urlParams.get('uid');
+        let uid = urlParams.get('uid');
 
+        // URL တွင် UID မပါလာပါက Database မှ Active ဖြစ်သော User တစ်ဦးကို အလိုအလျောက် ယူမည်
         if (!uid) {
-            alert("ကျေးဇူးပြု၍ App ထဲမှတဆင့် ဝင်ရောက်ပေးပါ။ (UID မပါရှိပါ)");
+            db.ref('user').limitToFirst(1).once('value', (snapshot) => {
+                if (snapshot.exists()) {
+                    snapshot.forEach((child) => {
+                        uid = child.key;
+                        initUserAndGame();
+                    });
+                } else {
+                    uid = "DefaultUser_" + Math.floor(Math.random() * 1000);
+                    initUserAndGame();
+                }
+            });
+        } else {
+            initUserAndGame();
         }
 
         let currentMoney = 0;
-        let activeRoomId = uid ? localStorage.getItem("activeRoomId_" + uid) : null;
-        let myRole = uid ? localStorage.getItem("myRole_" + uid) : ""; 
+        let activeRoomId = null;
+        let myRole = ""; 
         let selectedBet = 0;
         let boardState = ["", "", "", "", "", "", "", "", ""];
         let turn = "X";
         let gameOver = false;
         let rewardProcessed = false;
+        let disconnectTimer = null;
 
-        // User အသစ်/အဟောင်း စစ်ဆေးပြီး Database တွင် အချက်အလက် ရှိမရှိ စစ်ဆေးခြင်း
-        if (uid) {
+        function initUserAndGame() {
+            activeRoomId = localStorage.getItem("activeRoomId_" + uid) || null;
+            myRole = localStorage.getItem("myRole_" + uid) || "";
+
             const userRef = db.ref(`user/${uid}`);
             userRef.once('value', (snapshot) => {
                 if (!snapshot.exists()) {
-                    // User အသစ်စက်စက် ဖြစ်နေပါက Default အချက်အလက်များနှင့် ငွေလက်ကျန် အလိုအလျောက် ဆောက်ပေးမည်
                     userRef.set({
-                        username: "User_" + uid.slice(-4),
-                        money: 10000 // ပထမဆုံး ဝင်လာသူအတွက် လက်ဆောင်ငွေ ၁၀,၀၀၀
+                        username: "Player_" + uid.slice(-4),
+                        money: 10000 
                     });
                 }
             });
 
-            // User ၏ ငွေလက်ကျန်နှင့် နာမည်ကို Real-time ယူခြင်း
+            // Name နှင့် Money ကိုသာ ဖော်ပြရန် (UID လုံးဝမပြပါ)
             userRef.on('value', (snapshot) => {
                 if(snapshot.exists()) {
                     const userData = snapshot.val();
@@ -132,28 +155,54 @@
                     }
                 }
             });
+
+            // Load Match History
+            loadMatchHistory();
+
+            if (activeRoomId) {
+                db.ref(`matchmaking/rooms/${activeRoomId}`).once('value', (snapshot) => {
+                    const roomData = snapshot.val();
+                    if (roomData && !roomData.gameOver && (roomData.player1 === uid || roomData.player2 === uid)) {
+                        startGameSession();
+                    } else {
+                        localStorage.removeItem("activeRoomId_" + uid);
+                        localStorage.removeItem("myRole_" + uid);
+                        activeRoomId = null;
+                    }
+                });
+            }
         }
 
-        // App ထဲ ပြန်ဝင်လာပါက မပြီးသေးသောပွဲရှိမရှိ စစ်ဆေးရန်
-        if (uid && activeRoomId) {
-            db.ref(`matchmaking/rooms/${activeRoomId}`).once('value', (snapshot) => {
-                const roomData = snapshot.val();
-                if (roomData && !roomData.gameOver && (roomData.player1 === uid || roomData.player2 === uid)) {
-                    startGameSession();
+        function loadMatchHistory() {
+            db.ref(`user_history/${uid}`).limitToLast(5).on('value', (snapshot) => {
+                const historyList = document.getElementById("history-list");
+                historyList.innerHTML = "";
+                if (snapshot.exists()) {
+                    snapshot.forEach((child) => {
+                        const h = child.val();
+                        let color = h.result === "WIN" ? "#10b981" : (h.result === "LOSS" ? "#ef4444" : "#fbbf24");
+                        let item = document.createElement("div");
+                        item.className = "history-item";
+                        item.innerHTML = `<span>${h.game} (${h.bet.toLocaleString()} MMK)</span> <span style="color: ${color}; font-weight: bold;">${h.result}</span>`;
+                        historyList.prepend(item);
+                    });
                 } else {
-                    localStorage.removeItem("activeRoomId_" + uid);
-                    localStorage.removeItem("myRole_" + uid);
-                    activeRoomId = null;
+                    historyList.innerHTML = "မှတ်တမ်း မရှိသေးပါ။";
                 }
             });
         }
 
-        function findMatch() {
-            if (!uid) {
-                alert("UID မတွေ့ရှိပါ။");
-                return;
-            }
+        function saveHistory(resultText, betAmount) {
+            db.ref(`user_history/${uid}`).push({
+                game: "XO 1v1",
+                bet: betAmount,
+                result: resultText,
+                timestamp: Date.now()
+            });
+        }
 
+        function findMatch() {
+            if (!uid) return;
             selectedBet = parseInt(document.getElementById("bet-amount").value);
             
             if (currentMoney < selectedBet) {
@@ -161,7 +210,6 @@
                 return;
             }
 
-            // Firebase Transaction ဖြင့် လောင်းကြေးငွေ ဖြတ်ခြင်း
             db.ref(`user/${uid}/money`).transaction((money) => {
                 if (money === null || money < selectedBet) return;
                 return money - selectedBet;
@@ -179,10 +227,8 @@
             document.querySelector("#matchmaking-screen .btn").style.display = "none";
 
             const queueRef = db.ref("matchmaking/queue");
-            
             queueRef.once('value', (snapshot) => {
                 let matchedRoom = null;
-                
                 snapshot.forEach((childSnapshot) => {
                     let roomData = childSnapshot.val();
                     if (roomData.status === "waiting" && roomData.bet === selectedBet && roomData.player1 !== uid) {
@@ -193,7 +239,6 @@
                 if (matchedRoom) {
                     activeRoomId = matchedRoom;
                     myRole = "O";
-                    
                     localStorage.setItem("activeRoomId_" + uid, activeRoomId);
                     localStorage.setItem("myRole_" + uid, myRole);
 
@@ -201,14 +246,12 @@
                         player2: uid,
                         status: "playing"
                     });
-                    
                     db.ref(`matchmaking/queue/${activeRoomId}`).remove();
                     startGameSession();
                 } else {
                     const newRoomRef = db.ref("matchmaking/rooms").push();
                     activeRoomId = newRoomRef.key;
                     myRole = "X";
-
                     localStorage.setItem("activeRoomId_" + uid, activeRoomId);
                     localStorage.setItem("myRole_" + uid, myRole);
 
@@ -220,7 +263,8 @@
                         board: ["","","","","","","","",""],
                         turn: "X",
                         gameOver: false,
-                        winner: ""
+                        winner: "",
+                        lastActive: Date.now()
                     });
 
                     db.ref(`matchmaking/queue/${activeRoomId}`).set({
@@ -251,7 +295,6 @@
             }
             localStorage.removeItem("activeRoomId_" + uid);
             localStorage.removeItem("myRole_" + uid);
-            
             document.getElementById("searching-box").style.display = "none";
             document.querySelector("#matchmaking-screen .btn").style.display = "block";
             activeRoomId = null;
@@ -261,6 +304,15 @@
             document.getElementById("matchmaking-screen").style.display = "none";
             document.getElementById("game-screen").style.display = "block";
             rewardProcessed = false;
+
+            // Heartbeat: ကိုယ် Online ရှိနေကြောင်း အမြဲ update လုပ်မည်
+            const heartbeatInterval = setInterval(() => {
+                if (activeRoomId && !gameOver) {
+                    db.ref(`matchmaking/rooms/${activeRoomId}/lastActive_${myRole}`).set(Date.now());
+                } else {
+                    clearInterval(heartbeatInterval);
+                }
+            }, 3000);
 
             db.ref(`matchmaking/rooms/${activeRoomId}`).on('value', (snapshot) => {
                 const data = snapshot.val();
@@ -272,17 +324,32 @@
 
                 updateGameUI();
 
+                // ပြိုင်ဘက် လိုင်းကျခြင်းကို ၁၀ စက္ကန့် စောင့်စစ်ဆေးခြင်း
+                const opponentRole = (myRole === "X") ? "O" : "X";
+                const oppLastActive = data[`lastActive_${opponentRole}`] || 0;
+                if (!gameOver && data.status === "playing" && (Date.now() - oppLastActive > 12000)) {
+                    // ၁၂ စက္ကန့်ကျော် လှုပ်ရှားမှုမရှိပါက ပြိုင်ဘက် လိုင်းကျသည်ဟု ယူဆပြီး အနိုင်ပေးမည်
+                    db.ref(`matchmaking/rooms/${activeRoomId}`).update({
+                        gameOver: true,
+                        winner: myRole
+                    });
+                }
+
                 if (gameOver && !rewardProcessed) {
                     rewardProcessed = true;
+                    clearInterval(heartbeatInterval);
                     
                     if (data.winner === myRole) {
-                        let payout = Math.floor(data.bet * 1.9); // ၁၀၀ ထိုးလျှင် ၁၉၀ နှုန်း
+                        let payout = Math.floor(data.bet * 1.9);
                         db.ref(`user/${uid}/money`).transaction((money) => (money || 0) + payout);
+                        saveHistory("WIN", data.bet);
                         alert("🎉 ဂုဏ်ယူပါတယ်! သင် နိုင်သွားပါပြီ (+ " + payout.toLocaleString() + " MMK)");
                     } else if (data.winner === "Draw") {
                         db.ref(`user/${uid}/money`).transaction((money) => (money || 0) + data.bet);
+                        saveHistory("DRAW", data.bet);
                         alert("🤝 ပွဲပြီးပါပြီ (သရေကျသဖြင့် လောင်းကြေး ပြန်အမ်းပါသည်)");
                     } else if (data.winner && data.winner !== "Draw") {
+                        saveHistory("LOSS", data.bet);
                         alert("❌ ရှုံးနိမ့်သွားပါပြီ (- " + data.bet.toLocaleString() + " MMK)");
                     }
 
@@ -305,7 +372,7 @@
             } else if (turn === myRole) {
                 statusDiv.innerText = "✨ သင့်အလှည့် (" + myRole + ")";
             } else {
-                statusDiv.innerText = "⏳ ပြိုင်ဘက်၏ အလှည့် (" + turn + ")...";
+                statusDiv.innerText = "⏳ ပြိုင်ဘက်၏ အလှည့် (" + turn + ")... (လိုင်းကျပါက ၁၀ စက္ကန့်စောင့်မည်)";
             }
         }
 
@@ -313,7 +380,6 @@
             if (gameOver || turn !== myRole || boardState[index] !== "") return;
 
             boardState[index] = myRole;
-
             let winner = checkWinner();
             let isGameOver = false;
             let winningSymbol = "";
@@ -332,7 +398,8 @@
                 board: boardState,
                 turn: turn,
                 gameOver: isGameOver,
-                winner: winningSymbol
+                winner: winningSymbol,
+                [`lastActive_${myRole}`]: Date.now()
             });
         }
 
