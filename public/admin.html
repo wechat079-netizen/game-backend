@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Game Control Panel</title>
+    <!-- Firebase CDN (Compat Versions) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <style>
         body { font-family: sans-serif; background-color: #12151e; color: #ffffff; margin: 0; padding: 15px; }
         .card { background: #1a1e29; padding: 20px; border-radius: 12px; border: 1px solid #2a3040; margin-bottom: 15px; }
@@ -202,7 +205,20 @@
     </div>
 
     <script>
+        // Firebase Configuration (google-services.json မှ ရယူထားသော အချက်အလက်များ)
+        const firebaseConfig = {
+            apiKey: "AlzaSyANN707Pr5XnLF9MdnyrNfjYNewlVlEr-4",
+            databaseURL: "https://right-2c598-default-rtdb.firebaseio.com",
+            projectId: "right-2c598",
+            storageBucket: "right-2c598.firebasestorage.app"
+        };
+
+        // Firebase စတင်ချိတ်ဆက်ခြင်း
+        firebase.initializeApp(firebaseConfig);
+        const dbRef = firebase.database();
+
         let currentGame = '30s';
+        let lastSavedRound = null;
 
         // App / Page ဖွင့်တိုင်း Login Screen ပြမည်
         document.getElementById('loginOverlay').style.display = 'flex';
@@ -267,6 +283,7 @@
         function switchGame(type) {
 
             currentGame = type;
+            lastSavedRound = null; // Game ပြောင်းလိုက်ရင် Round အသစ်အတွက် ပြန်စမည်
 
             document.getElementById('currentGameMode').innerText = type;
 
@@ -296,7 +313,7 @@
 
 
         // =========================
-        // GET ADMIN DATA
+        // GET ADMIN DATA & SAVE HISTORY
         // =========================
         async function fetchAdminData() {
 
@@ -318,6 +335,21 @@
 
                 document.getElementById('forcedStatus').innerText =
                     data.forced || 'Auto (မပြင်ထားပါ)';
+
+
+                // Round အသစ်ပြောင်းသွားတိုင်း သို့မဟုတ် ဒေတာရောက်လာတိုင်း Firebase ထဲသို့ History တင်ရန်
+                if (data.round && data.round !== lastSavedRound) {
+                    lastSavedRound = data.round;
+
+                    dbRef.ref(`clientGameHistories/${currentGame}`).push({
+                        round: data.round,
+                        timer: data.timer,
+                        forced: data.forced,
+                        totals: data.totals || {},
+                        betsCount: data.bets ? data.bets.length : 0,
+                        savedAt: new Date().toISOString()
+                    });
+                }
 
 
                 // =========================
