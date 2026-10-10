@@ -240,6 +240,22 @@ app.post('/api/place-bet', async (req, res) => {
     return res.status(400).json({ success: false, message: "ထိုးငွေ ပမာဏ မမှန်ကန်ပါ!" });
   }
 
+  // --- ငွေလက်ကျန် (Balance) မလုံလောက်ပါက Bet မတင်နိုင်ရန် စစ်ဆေးခြင်း ---
+  if (admin.apps.length > 0) {
+    try {
+      const userMoneyRef = admin.database().ref(`user/${uid}/money`);
+      const moneySnap = await userMoneyRef.once('value');
+      let currentMoney = parseFloat(moneySnap.val() || 0);
+
+      if (currentMoney < betAmount) {
+        return res.status(400).json({ success: false, message: "ငွေလက်ကျန် မလုံလောက်ပါ!" });
+      }
+    } catch (e) {
+      console.log("Check Balance Error:", e.message);
+    }
+  }
+  // -------------------------------------------------------------
+
   let playerName = name;
   if (!playerName && admin.apps.length > 0) {
     try {
