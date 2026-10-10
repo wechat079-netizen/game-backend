@@ -10,7 +10,6 @@
         body { font-family: sans-serif; background: #0f172a; color: #fff; text-align: center; padding: 15px; margin: 0; }
         .container { max-width: 420px; margin: 0 auto; background: #1e293b; padding: 20px; border-radius: 16px; box-shadow: 0 8px 20px rgba(0,0,0,0.5); border: 1px solid #334155; }
         
-        /* Header Layout: ဘယ်ဘက်မှာ နာမည်၊ ညာဘက်မှာ ငွေလက်ကျန် */
         .header { display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 12px 18px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #334155; }
         .user-info { display: flex; align-items: center; gap: 8px; font-weight: bold; font-size: 15px; color: #38bdf8; }
         .balance-info { display: flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.15); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.3); color: #10b981; font-weight: bold; font-size: 14px; }
@@ -45,10 +44,10 @@
         <!-- Header: ဘယ်ဘက်တွင် နာမည်၊ ညာဘက်တွင် ငွေလက်ကျန် -->
         <div class="header">
             <div class="user-info">
-                <span>👤</span> <span id="username">Loading...</span>
+                <span>👤</span> <span id="username">Player</span>
             </div>
             <div class="balance-info">
-                <span>💰</span> <span id="user-money">Loading...</span>
+                <span>💰</span> <span id="user-money">0 MMK</span>
             </div>
         </div>
 
@@ -75,7 +74,6 @@
                 <button class="btn btn-danger" onclick="cancelSearch()">ပွဲရှာဖွေခြင်း ဖျက်သိမ်းမည်</button>
             </div>
 
-            <!-- Match History Section -->
             <div class="history-box" id="history-box">
                 <div style="font-weight: bold; color: #38bdf8; margin-bottom: 4px;">📜 ကစားခဲ့သော မှတ်တမ်းများ</div>
                 <div id="history-list" style="color: #94a3b8;">မှတ်တမ်း မရှိသေးပါ။</div>
@@ -96,7 +94,7 @@
                 <div class="cell" onclick="makeMove(7)"></div>
                 <div class="cell" onclick="makeMove(8)"></div>
             </div>
-            <div class="info-text" style="color: #ef4444; margin-top: 10px;">⚠️ ပွဲစနေစဉ် မထွက်ရပါ (လိုင်းကျပါက ၁၀ စက္ကန့်အတွင်း ပြန်မဝင်ပါက ရှုံးမည်)</div>
+            <div class="info-text" style="color: #ef4444; margin-top: 10px;">⚠️ ပွဲစနေစဉ် မထွက်ရပါ</div>
         </div>
     </div>
 
@@ -108,72 +106,56 @@
         const db = firebase.database();
 
         const urlParams = new URLSearchParams(window.location.search);
-        let uid = urlParams.get('uid');
+        let uid = urlParams.get('uid') || "3lxCl5C7fIOlK9n0Bv5iA9Xbf5J3"; // UID မပါရင် Test UID သုံးမည်
 
-        if (!uid) {
-            db.ref('user').limitToFirst(1).once('value', (snapshot) => {
-                if (snapshot.exists()) {
-                    snapshot.forEach((child) => {
-                        uid = child.key;
-                        initUserAndGame();
-                    });
-                } else {
-                    uid = "DefaultUser_" + Math.floor(Math.random() * 1000);
-                    initUserAndGame();
-                }
-            });
-        } else {
-            initUserAndGame();
-        }
-
-        let currentMoney = 0;
-        let activeRoomId = null;
-        let myRole = ""; 
+        let currentMoney = 10000;
+        let activeRoomId = localStorage.getItem("activeRoomId_" + uid) || null;
+        let myRole = localStorage.getItem("myRole_" + uid) || ""; 
         let selectedBet = 0;
         let boardState = ["", "", "", "", "", "", "", "", ""];
         let turn = "X";
         let gameOver = false;
         let rewardProcessed = false;
 
-        function initUserAndGame() {
-            activeRoomId = localStorage.getItem("activeRoomId_" + uid) || null;
-            myRole = localStorage.getItem("myRole_" + uid) || "";
+        // ချက်ချင်း ယာယီတန်ဖိုးပြထားရန်
+        document.getElementById("username").innerText = "User_" + uid.slice(-4);
+        document.getElementById("user-money").innerText = currentMoney.toLocaleString() + " MMK";
 
-            const userRef = db.ref(`user/${uid}`);
-            userRef.once('value', (snapshot) => {
-                if (!snapshot.exists()) {
-                    userRef.set({
-                        username: "Player_" + uid.slice(-4),
-                        money: 10000 
-                    });
-                }
-            });
-
-            userRef.on('value', (snapshot) => {
-                if(snapshot.exists()) {
-                    const userData = snapshot.val();
-                    currentMoney = userData.money || 0;
-                    document.getElementById("user-money").innerText = currentMoney.toLocaleString() + " MMK";
-                    if(userData.username) {
-                        document.getElementById("username").innerText = userData.username;
-                    }
-                }
-            });
-
-            loadMatchHistory();
-
-            if (activeRoomId) {
-                db.ref(`matchmaking/rooms/${activeRoomId}`).once('value', (snapshot) => {
-                    const roomData = snapshot.val();
-                    if (roomData && !roomData.gameOver && (roomData.player1 === uid || roomData.player2 === uid)) {
-                        startGameSession();
-                    } else {
-                        localStorage.removeItem("activeRoomId_" + uid);
-                        localStorage.removeItem("myRole_" + uid);
-                        activeRoomId = null;
-                    }
+        // Firebase မှ တကယ့် Data လှမ်းယူခြင်း
+        const userRef = db.ref(`user/${uid}`);
+        userRef.once('value', (snapshot) => {
+            if (!snapshot.exists()) {
+                userRef.set({
+                    username: "User_" + uid.slice(-4),
+                    money: 10000 
                 });
             }
+        });
+
+        userRef.on('value', (snapshot) => {
+            if(snapshot.exists()) {
+                const userData = snapshot.val();
+                currentMoney = userData.money || 0;
+                document.getElementById("user-money").innerText = currentMoney.toLocaleString() + " MMK";
+                if(userData.username) {
+                    document.getElementById("username").innerText = userData.username;
+                }
+            }
+        });
+
+        loadMatchHistory();
+
+        if (activeRoomId) {
+            db.ref(`matchmaking/rooms/${activeRoomId}`).once('value', (snapshot) => {
+                const roomData = snapshot.val();
+                if (roomData && !roomData.gameOver && (roomData.player1 === uid || roomData.player2 === uid)) {
+                    startGameSession();
+                } else {
+                    localStorage.removeItem("activeRoomId_" + uid);
+                    localStorage.removeItem("myRole_" + uid);
+                    activeRoomId = null;
+                }
+            });
         }
 
         function loadMatchHistory() {
@@ -205,7 +187,6 @@
         }
 
         function findMatch() {
-            if (!uid) return;
             selectedBet = parseInt(document.getElementById("bet-amount").value);
             
             if (currentMoney < selectedBet) {
@@ -372,7 +353,7 @@
             } else if (turn === myRole) {
                 statusDiv.innerText = "✨ သင့်အလှည့် (" + myRole + ")";
             } else {
-                statusDiv.innerText = "⏳ ပြိုင်ဘက်၏ အလှည့် (" + turn + ")... (လိုင်းကျပါက ၁၀ စက္ကန့်စောင့်မည်)";
+                statusDiv.innerText = "⏳ ပြိုင်ဘက်၏ အလှည့် (" + turn + ")...";
             }
         }
 
