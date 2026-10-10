@@ -59,6 +59,7 @@
             <div class="bet-box">
                 <label>လောင်းကြေးရွေးချယ်ပါ (MMK)</label>
                 <select id="bet-amount">
+                    <option value="100">100 MMK</option>
                     <option value="1000">1,000 MMK</option>
                     <option value="5000">5,000 MMK</option>
                     <option value="10000">10,000 MMK</option>
@@ -136,7 +137,6 @@
                     document.getElementById("username").innerText = "User_" + uid.slice(-4);
                 }
             } else {
-                // အကယ်၍ Data မရှိသေးပါက Default တန်ဖိုးသတ်မှတ်ပေးရန်
                 userRef.set({
                     name: "Player_" + uid.slice(-4),
                     money: 10000 
