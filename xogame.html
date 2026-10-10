@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>1v1 PvP XO Battle - Real Firebase Balance</title>
+    <title>1v1 PvP XO Battle</title>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
     <style>
         body { font-family: sans-serif; background: #0f172a; color: #fff; text-align: center; padding: 15px; margin: 0; }
         .container { max-width: 420px; margin: 0 auto; background: #1e293b; padding: 20px; border-radius: 16px; box-shadow: 0 8px 20px rgba(0,0,0,0.5); border: 1px solid #334155; }
@@ -17,7 +16,7 @@
         #game-screen { display: none; }
         
         .bet-box { background: #334155; padding: 15px; border-radius: 10px; margin-bottom: 15px; text-align: left; }
-        select, input { width: 100%; padding: 10px; margin-top: 8px; border-radius: 6px; border: none; background: #1e293b; color: white; font-size: 16px; text-align: center; }
+        select { width: 100%; padding: 10px; margin-top: 8px; border-radius: 6px; border: none; background: #1e293b; color: white; font-size: 16px; text-align: center; }
         
         .btn { background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; padding: 12px 20px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; transition: 0.2s; }
         .btn:active { transform: scale(0.98); }
@@ -39,7 +38,7 @@
     <div class="container">
         <!-- Header: Balance -->
         <div class="header">
-            <span>👤 Profile</span>
+            <span>👤 <span id="username">Loading...</span></span>
             <span class="balance" id="user-money">Loading...</span>
         </div>
 
@@ -81,8 +80,7 @@
                 <div class="cell" onclick="makeMove(7)"></div>
                 <div class="cell" onclick="makeMove(8)"></div>
             </div>
-            <!-- ပွဲစနေစဉ် မထွက်နိုင်စေရန် Exit ခလုတ်ကို ဖြုတ်ထားပြီး၊ သတိပေးချက် ထည့်ထားသည် -->
-            <div class="info-text" style="color: #ef4444; margin-top: 10px;">⚠️ ပွဲစနေစဉ် ထွက်သွားပါက ရှုံးနိမ့်ူသတ်မှတ်မည် (သို့သော် အက်ပ်ထထဲသို့ ပြန်ဝင်ပါက ပွဲဆက်ကစားနိုင်သည်)</div>
+            <div class="info-text" style="color: #ef4444; margin-top: 10px;">⚠️ ပွဲစနေစဉ် မထွက်ရပါ</div>
         </div>
     </div>
 
@@ -92,59 +90,70 @@
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-        const auth = firebase.auth();
 
-        let uid = "";
+        // URL ထဲမှ ?uid= ပါလာသည်ကို ဖမ်းယူခြင်း
+        const urlParams = new URLSearchParams(window.location.search);
+        const uid = urlParams.get('uid');
+
+        if (!uid) {
+            alert("ကျေးဇူးပြု၍ App ထဲမှတဆင့် ဝင်ရောက်ပေးပါ။ (UID မပါရှိပါ)");
+        }
+
         let currentMoney = 0;
-        let activeRoomId = localStorage.getItem("activeRoomId") || null;
-        let myRole = localStorage.getItem("myRole") || ""; 
+        let activeRoomId = uid ? localStorage.getItem("activeRoomId_" + uid) : null;
+        let myRole = uid ? localStorage.getItem("myRole_" + uid) : ""; 
         let selectedBet = 0;
         let boardState = ["", "", "", "", "", "", "", "", ""];
         let turn = "X";
         let gameOver = false;
         let rewardProcessed = false;
 
-        // User Login စစ်ဆေးပြီး ငွေလက်ကျန် Real-time ချိတ်ဆက်ခြင်း
-        auth.onAuthStateChanged((user) => {
-            if (user) {
-                uid = user.uid;
-                setupUserBalanceListener();
-                checkActiveGameOnStart(); // အရင်ကပွဲက မပြီးသေးရင် ပြန်ဝင်ရန်
-            } else {
-                // Testing အတွက် User မရှိသေးပါက Anonymous Login သို့မဟုတ် ယာယီ UID သုံးရန်
-                auth.signInAnonymously().catch((error) => {
-                    console.error("Auth Error:", error);
-                });
-            }
-        });
+        // User အသစ်/အဟောင်း စစ်ဆေးပြီး Database တွင် အချက်အလက် ရှိမရှိ စစ်ဆေးခြင်း
+        if (uid) {
+            const userRef = db.ref(`user/${uid}`);
+            userRef.once('value', (snapshot) => {
+                if (!snapshot.exists()) {
+                    // User အသစ်စက်စက် ဖြစ်နေပါက Default အချက်အလက်များနှင့် ငွေလက်ကျန် အလိုအလျောက် ဆောက်ပေးမည်
+                    userRef.set({
+                        username: "User_" + uid.slice(-4),
+                        money: 10000 // ပထမဆုံး ဝင်လာသူအတွက် လက်ဆောင်ငွေ ၁၀,၀၀၀
+                    });
+                }
+            });
 
-        function setupUserBalanceListener() {
-            db.ref(`user/${uid}/money`).on('value', (snapshot) => {
-                currentMoney = snapshot.exists() ? snapshot.val() : 0;
-                document.getElementById("user-money").innerText = currentMoney.toLocaleString() + " MMK";
+            // User ၏ ငွေလက်ကျန်နှင့် နာမည်ကို Real-time ယူခြင်း
+            userRef.on('value', (snapshot) => {
+                if(snapshot.exists()) {
+                    const userData = snapshot.val();
+                    currentMoney = userData.money || 0;
+                    document.getElementById("user-money").innerText = currentMoney.toLocaleString() + " MMK";
+                    if(userData.username) {
+                        document.getElementById("username").innerText = userData.username;
+                    }
+                }
             });
         }
 
-        // အပလီကေးရှင်းမှ ထွက်သွားပြီးမှ ပြန်ဝင်လာသည့်အခါ မပြီးသေးသောပွဲရှိမရှိ စစ်ဆေးခြင်း
-        function checkActiveGameOnStart() {
-            if (activeRoomId) {
-                db.ref(`matchmaking/rooms/${activeRoomId}`).once('value', (snapshot) => {
-                    const roomData = snapshot.val();
-                    if (roomData && !roomData.gameOver && (roomData.player1 === uid || roomData.player2 === uid)) {
-                        // ပွဲမပြီးသေးပါက Game Screen သို့ တိုက်ရိုက်ခေါ်ဆောင်မည်
-                        startGameSession();
-                    } else {
-                        // ပွဲပြီးသွားပြီဆိုရင် LocalStorage ရှင်းမည်
-                        localStorage.removeItem("activeRoomId");
-                        localStorage.removeItem("myRole");
-                        activeRoomId = null;
-                    }
-                });
-            }
+        // App ထဲ ပြန်ဝင်လာပါက မပြီးသေးသောပွဲရှိမရှိ စစ်ဆေးရန်
+        if (uid && activeRoomId) {
+            db.ref(`matchmaking/rooms/${activeRoomId}`).once('value', (snapshot) => {
+                const roomData = snapshot.val();
+                if (roomData && !roomData.gameOver && (roomData.player1 === uid || roomData.player2 === uid)) {
+                    startGameSession();
+                } else {
+                    localStorage.removeItem("activeRoomId_" + uid);
+                    localStorage.removeItem("myRole_" + uid);
+                    activeRoomId = null;
+                }
+            });
         }
 
-        // ပွဲရှာရန် (Firebase Transaction ဖြင့် ငွေကြိုဖြတ်ခြင်း)
         function findMatch() {
+            if (!uid) {
+                alert("UID မတွေ့ရှိပါ။");
+                return;
+            }
+
             selectedBet = parseInt(document.getElementById("bet-amount").value);
             
             if (currentMoney < selectedBet) {
@@ -152,17 +161,15 @@
                 return;
             }
 
-            // Firebase Transaction ဖြင့် ငွေလုံလောက်မှုရှိမရှိ စစ်ဆေးပြီး လောင်းကြေးငွေ ဖြတ်ခြင်း
+            // Firebase Transaction ဖြင့် လောင်းကြေးငွေ ဖြတ်ခြင်း
             db.ref(`user/${uid}/money`).transaction((money) => {
-                if (money === null || money < selectedBet) {
-                    return; // ငွေမလောက်ရင် ပယ်မည်
-                }
+                if (money === null || money < selectedBet) return;
                 return money - selectedBet;
-            }, (error, committed, snapshot) => {
+            }, (error, committed) => {
                 if (committed) {
                     startQueueProcess();
                 } else {
-                    alert("ငွေဖြတ်ယူရာတွင် အမှားအယွင်းရှိTပါသည် သို့မဟုတ် ငွေမလောက်ပါ။");
+                    alert("ငွေဖြတ်ယူရာတွင် အမှားအယွင်းရှိပါသည်။");
                 }
             });
         }
@@ -187,8 +194,8 @@
                     activeRoomId = matchedRoom;
                     myRole = "O";
                     
-                    localStorage.setItem("activeRoomId", activeRoomId);
-                    localStorage.setItem("myRole", myRole);
+                    localStorage.setItem("activeRoomId_" + uid, activeRoomId);
+                    localStorage.setItem("myRole_" + uid, myRole);
 
                     db.ref(`matchmaking/rooms/${activeRoomId}`).update({
                         player2: uid,
@@ -202,8 +209,8 @@
                     activeRoomId = newRoomRef.key;
                     myRole = "X";
 
-                    localStorage.setItem("activeRoomId", activeRoomId);
-                    localStorage.setItem("myRole", myRole);
+                    localStorage.setItem("activeRoomId_" + uid, activeRoomId);
+                    localStorage.setItem("myRole_" + uid, myRole);
 
                     newRoomRef.set({
                         player1: uid,
@@ -240,12 +247,10 @@
             if (activeRoomId) {
                 db.ref(`matchmaking/rooms/${activeRoomId}`).remove();
                 db.ref(`matchmaking/queue/${activeRoomId}`).remove();
-                
-                // ရှာဖွေမှုဖျက်ပါက ကြိုဖြတ်ထားသော ငွေကို ပြန်ထည့်ပေးမည်
                 db.ref(`user/${uid}/money`).transaction((money) => (money || 0) + selectedBet);
             }
-            localStorage.removeItem("activeRoomId");
-            localStorage.removeItem("myRole");
+            localStorage.removeItem("activeRoomId_" + uid);
+            localStorage.removeItem("myRole_" + uid);
             
             document.getElementById("searching-box").style.display = "none";
             document.querySelector("#matchmaking-screen .btn").style.display = "block";
@@ -267,7 +272,6 @@
 
                 updateGameUI();
 
-                // အနိုင်အရှုံးပေါ်၍ ငွေရှင်းခြင်း (Firebase Transaction ဖြင့် ပေါင်းထည့်ခြင်း)
                 if (gameOver && !rewardProcessed) {
                     rewardProcessed = true;
                     
@@ -282,9 +286,8 @@
                         alert("❌ ရှုံးနိမ့်သွားပါပြီ (- " + data.bet.toLocaleString() + " MMK)");
                     }
 
-                    // ဂိမ်းပြီးပါက Storage ရှင်းမည်
-                    localStorage.removeItem("activeRoomId");
-                    localStorage.removeItem("myRole");
+                    localStorage.removeItem("activeRoomId_" + uid);
+                    localStorage.removeItem("myRole_" + uid);
                 }
             });
         }
@@ -297,10 +300,8 @@
 
             const statusDiv = document.getElementById('status');
             if (gameOver) {
-                statusDiv.innerText = "🏁 ဂိမ်းပြီးဆုံးသွားပါပြီ! (ပင်မစာမျက်နှာသို့ ပြန်သွားနိုင်ပါပြီ)";
-                setTimeout(() => {
-                    location.reload();
-                }, 3000);
+                statusDiv.innerText = "🏁 ဂိမ်းပြီးဆုံးသွားပါပြီ!";
+                setTimeout(() => { location.reload(); }, 3000);
             } else if (turn === myRole) {
                 statusDiv.innerText = "✨ သင့်အလှည့် (" + myRole + ")";
             } else {
