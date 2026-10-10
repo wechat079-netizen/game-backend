@@ -12,7 +12,12 @@
         
         .header { display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 12px 18px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #334155; }
         .user-info { display: flex; align-items: center; gap: 8px; font-weight: bold; font-size: 15px; color: #38bdf8; }
+        
+        /* Balance & Refresh Button Styles */
+        .right-header { display: flex; align-items: center; gap: 8px; }
         .balance-info { display: flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.15); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.3); color: #10b981; font-weight: bold; font-size: 14px; }
+        .refresh-btn { background: #334155; border: 1px solid #475569; color: #38bdf8; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; transition: 0.3s; }
+        .refresh-btn:active { transform: rotate(180deg); background: #475569; }
         
         #matchmaking-screen { display: block; }
         #game-screen { display: none; }
@@ -41,13 +46,16 @@
 <body>
 
     <div class="container">
-        <!-- Header: ဘယ်ဘက် နာမည်၊ ညာဘက် ငွေလက်ကျန် -->
+        <!-- Header: ဘယ်ဘက် နာမည်၊ ညာဘက် ငွေလက်ကျန်နှင့် Refresh ခလုတ် -->
         <div class="header">
             <div class="user-info">
                 <span>👤</span> <span id="username">Loading...</span>
             </div>
-            <div class="balance-info">
-                <span>💰</span> <span id="user-money">Loading...</span>
+            <div class="right-header">
+                <div class="balance-info">
+                    <span>💰</span> <span id="user-money">Loading...</span>
+                </div>
+                <button class="refresh-btn" onclick="manualRefresh()" title="Data ပြန်လည်ဆွဲထုတ်မည်">🔄</button>
             </div>
         </div>
 
@@ -128,7 +136,6 @@
                 currentMoney = userData.money || 0;
                 document.getElementById("user-money").innerText = currentMoney.toLocaleString() + " MMK";
                 
-                // Sketchware မှ name ကို ဦးစားပေးဖော်ပြမည်[span_2](start_span)[span_2](end_span)
                 if(userData.name) {
                     document.getElementById("username").innerText = userData.name;
                 } else if(userData.username) {
@@ -146,17 +153,20 @@
 
         loadMatchHistory();
 
-        if (activeRoomId) {
-            db.ref(`matchmaking/rooms/${activeRoomId}`).once('value', (snapshot) => {
-                const roomData = snapshot.val();
-                if (roomData && !roomData.gameOver && (roomData.player1 === uid || roomData.player2 === uid)) {
-                    startGameSession();
-                } else {
-                    localStorage.removeItem("activeRoomId_" + uid);
-                    localStorage.removeItem("myRole_" + uid);
-                    activeRoomId = null;
+        // 🔄 Manual Refresh ခလုတ်နှိပ်သည့်အခါ Data ကို အသစ်ပြန်လည်ဆွဲထုတ်မည်
+        function manualRefresh() {
+            userRef.once('value', (snapshot) => {
+                if(snapshot.exists()) {
+                    const userData = snapshot.val();
+                    currentMoney = userData.money || 0;
+                    document.getElementById("user-money").innerText = currentMoney.toLocaleString() + " MMK";
+                    if(userData.name) {
+                        document.getElementById("username").innerText = userData.name;
+                    }
                 }
             });
+            loadMatchHistory();
+            alert("🔄 အချက်အလက်များကို အောင်မြင်စွာ Refresh လုပ်ပြီးပါပြီ!");
         }
 
         function loadMatchHistory() {
@@ -196,7 +206,6 @@
                 return;
             }
 
-            // ငွေလုံခြုံရေးအတွက် Firebase Transaction ဖြင့် ငွေဖြတ်ခြင်း
             db.ref(`user/${uid}/money`).transaction((money) => {
                 if (money === null || money < selectedBet) return;
                 return money - selectedBet;
