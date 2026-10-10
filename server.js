@@ -56,7 +56,7 @@ function startGameEngine(gameType) {
         else if (c === "VIOLET") winningNumber = [1, 3, 5, 7, 9][Math.floor(Math.random() * 5)]; 
         else winningNumber = Math.floor(Math.random() * 10);
       } else {
-        // 2. Auto Mode: Bet ထိုးငွေအနည်းဆုံးဘက်ကို နိုင်စေရန် တွက်ချက်ခြင်း
+        // 2. Auto Mode: BIG, SMALL, GREEN, VIOLET အားလုံးထဲမှ ငွေအနည်းဆုံးဘက်ကို နိုင်စေရန် တွက်ချက်ခြင်း
         const currentBets = activeBets[gameType] || [];
         let totals = { BIG: 0, SMALL: 0, GREEN: 0, VIOLET: 0 };
 
@@ -69,12 +69,29 @@ function startGameEngine(gameType) {
           }
         });
 
-        let chosenChoice = totals.BIG <= totals.SMALL ? "BIG" : "SMALL";
+        // ငွေအနည်းဆုံးဘက်ကို ရှာခြင်း
+        let minAmount = Math.min(totals.BIG, totals.SMALL, totals.GREEN, totals.VIOLET);
+        let lowestChoices = [];
 
+        if (totals.BIG === minAmount) lowestChoices.push("BIG");
+        if (totals.SMALL === minAmount) lowestChoices.push("SMALL");
+        if (totals.GREEN === minAmount) lowestChoices.push("GREEN");
+        if (totals.VIOLET === minAmount) lowestChoices.push("VIOLET");
+
+        // ငွေအနည်းဆုံးတူနေပါက ကျပန်း တစ်ခုရွေးမည်
+        let chosenChoice = lowestChoices[Math.floor(Math.random() * lowestChoices.length)];
+
+        // ရွေးချယ်ထားသော Choice အလိုက် Winning Number သတ်မှတ်ခြင်း
         if (chosenChoice === "BIG") {
-          winningNumber = 5 + Math.floor(Math.random() * 5); // 5 ကနေ 9 ကြား
+          winningNumber = 5 + Math.floor(Math.random() * 5); // 5 - 9
+        } else if (chosenChoice === "SMALL") {
+          winningNumber = Math.floor(Math.random() * 5); // 0 - 4
+        } else if (chosenChoice === "GREEN") {
+          winningNumber = [0, 2, 4, 6, 8][Math.floor(Math.random() * 5)]; // Even numbers
+        } else if (chosenChoice === "VIOLET") {
+          winningNumber = [1, 3, 5, 7, 9][Math.floor(Math.random() * 5)]; // Odd numbers
         } else {
-          winningNumber = Math.floor(Math.random() * 5); // 0 ကနေ 4 ကြား
+          winningNumber = Math.floor(Math.random() * 10);
         }
       }
 
@@ -122,7 +139,7 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
     
     for (let bet of currentBets) {
       let userId = bet.uid;
-      let betKey = bet.betKey; // Firebase ထဲက key
+      let betKey = bet.betKey; 
       let amount = parseFloat(bet.amount || 0);
       let choice = String(bet.choice || '').trim().toUpperCase();
       let isWin = false;
@@ -137,7 +154,6 @@ async function settleBetsEngine(gameType, roundNumber, winningNumber, resultColo
 
       bet.status = isWin ? 'Win' : 'Lose';
 
-      // Firebase ရှိ userBetsHistory ထဲတွင် Status တန်းပြောင်းပေးရန်
       if (admin.apps.length > 0 && userId && betKey) {
         try {
           await admin.database().ref(`userBetsHistory/${userId}/${betKey}`).update({ status: bet.status });
@@ -181,14 +197,12 @@ app.get('/api/user/get-data', async (req, res) => {
 
   if (admin.apps.length > 0) {
     try {
-      // Firebase မှ Game History များကို ဆွဲထုတ်ခြင်း
       const ghSnap = await admin.database().ref(`gameHistory/${gameType}`).limitToLast(30).once('value');
       if (ghSnap.exists()) {
         const val = ghSnap.val();
         gameHistoryList = Object.values(val).reverse();
       }
 
-      // Firebase မှ User ၏ My History များကို ဆွဲထုတ်ခြင်း
       if (uid) {
         const ubSnap = await admin.database().ref(`userBetsHistory/${uid}`).limitToLast(20).once('value');
         if (ubSnap.exists()) {
@@ -212,7 +226,6 @@ app.post('/api/place-bet', async (req, res) => {
     return res.status(400).json({ success: false, message: "အချက်အလက် မစုံလင်ပါ!" });
   }
 
-  // --- နောက်ဆုံး ၆ စက္ကန့်အလို (Timer <= 6) တွင် Bet ထိုးခွင့်ပိတ်ခြင်း ---
   const interval = type === '30s' ? 30 : 60;
   const nowSec = Math.floor(Date.now() / 1000);
   const currentRound = Math.floor(nowSec / interval);
@@ -221,7 +234,6 @@ app.post('/api/place-bet', async (req, res) => {
   if (timer <= 6) {
     return res.status(400).json({ success: false, message: "အချိန်ကုန်သွားပါပြီ။ ဤ Round အတွက် ထိုးကြေးလက်မခံတော့ပါ။" });
   }
-  // -----------------------------------------------------------------
   
   const betAmount = parseFloat(amount);
   if (isNaN(betAmount) || betAmount <= 0) {
@@ -250,7 +262,6 @@ app.post('/api/place-bet', async (req, res) => {
     });
   }
 
-  // Firebase တွင် My History သိမ်းဆည်းရန်အတွက် Reference ဖန်တီးခြင်း
   let betKey = "";
   const betData = { 
     round: currentRound, 
